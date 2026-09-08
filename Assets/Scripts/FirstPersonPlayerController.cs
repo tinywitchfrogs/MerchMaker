@@ -1,0 +1,816 @@
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UI;
+
+namespace ArtSimulator
+{
+    public class FirstPersonPlayerController : MonoBehaviour
+    {
+        private static FirstPersonPlayerController instance;
+        public static FirstPersonPlayerController Instance
+        {
+            get
+            {
+                if (instance == null) instance = FindFirstObjectByType<FirstPersonPlayerController>();
+                return instance;
+            }
+            private set => instance = value;
+        }
+
+        [Header("Movimiento")]
+        [SerializeField] private float walkSpeed = 5.5f;
+        [SerializeField] private float sprintSpeed = 9.0f;
+        [SerializeField] private float verticalSpeed = 4.0f;
+
+        [Header("Cámara y Ratón")]
+        [SerializeField] private float mouseSensitivity = 2.0f;
+        [SerializeField] private float minPitch = -85f;
+        [SerializeField] private float maxPitch = 85f;
+
+        [Header("Agarre de Objetos")]
+        [SerializeField] private float interactionRange = 2.2f;
+        [SerializeField] private Vector3 holdOffset = new Vector3(0.3f, -0.2f, 0.7f);
+        [SerializeField] private float carryLerpSpeed = 12f;
+
+        private Camera playerCamera;
+        private float yaw = 0f;
+        private float pitch = 0f;
+        private bool isCursorLocked = true;
+
+        private Transform heldObject = null;
+        private Rigidbody heldRigidbody = null;
+        private Collider heldCollider = null;
+
+        // Modo Dibujo interactivo sobre papel
+        private bool isDrawingMode = false;
+        private DrawingCanvas activeDrawingCanvas = null;
+        public bool IsDrawingMode => isDrawingMode;
+
+        // Zoom de cámara y dibujo
+        private float normalPlayerFOV = 60f;
+        private float drawingTargetFOV = 35f;
+        private const float minDrawingFOV = 15f;
+        private const float maxDrawingFOV = 65f;
+        private const float drawingZoomSpeed = 12f;
+
+        // UI Retícula y mensajes
+        private GameObject crosshairCanvas;
+        private Image reticleDot;
+        private Text interactionPromptText;
+        private Text cameraPromptText;
+
+        private void Awake()
+        {
+            if (Instance == null) Instance = this;
+
+            playerCamera = GetComponent<Camera>();
+            if (playerCamera == null) playerCamera = GetComponentInChildren<Camera>();
+            if (playerCamera == null) playerCamera = Camera.main;
+
+            if (playerCamera != null)
+            {
+                yaw = playerCamera.transform.eulerAngles.y;
+                pitch = playerCamera.transform.eulerAngles.x;
+                normalPlayerFOV = playerCamera.fieldOfView;
+            }
+
+            CreateCrosshairUI();
+        }
+
+        private void Start()
+        {
+            SetCursorLock(true);
+        }
+
+        private void Update()
+        {
+            // Si estamos en Modo Dibujo activo
+            if (isDrawingMode)
+            {
+                HandleDrawingMode();
+                return;
+            }
+
+            HandleTabletToggleInput();
+
+            // Si la tableta está abierta en pantalla:
+            bool isTabletOpen = TabletManager.Instance != null && TabletManager.Instance.IsTabletOpen;
+            if (isTabletOpen)
+            {
+                TabletScreen currentScreen = TabletManager.Instance.CurrentScreen;
+
+                // MODO CÁMARA: ¡Permitir moverse libremente por el cuarto y rotar la vista para encuadrar y tomar fotos!
+                if (currentScreen == TabletScreen.Camera)
+                {
+                    HandleLook();
+                    HandleMovement();
+
+                    if (isCursorLocked)
+                    {
+                        SetCursorLock(false);
+                    }
+
+                    TabletCameraApp camApp = FindAnyObjectByType<TabletCameraApp>();
+                    float zoomFactor = camApp != null ? camApp.CurrentZoomFactor : 1.0f;
+                    SetCameraPromptText($"📷 <b>CÁMARA</b>: [WASD] Moverte  •  [Rueda / Q-E] Zoom ({zoomFactor:F1}x)  •  [ESPACIO / Clic] Foto  •  [🏠 / H] Volver");
+                    HandleTabletShortcuts();
+                    return;
+                }
+
+                // En otras pantallas (Home, Galería, Tienda): cursor libre para interactuar con la UI
+                if (isCursorLocked)
+                {
+                    SetCursorLock(false);
+                }
+                SetPromptText("");
+                HandleTabletShortcuts();
+                return;
+            }
+
+            // Si la tableta está cerrada, asegurar que el cursor esté bloqueado para jugar
+            if (!isCursorLocked)
+            {
+                SetCursorLock(true);
+            }
+
+            HandleLook();
+            HandleMovement();
+            HandleInspectionZoom();
+            HandleInteractionRaycast();
+            UpdateHeldObjectPosition();
+        }
+
+        private void HandleTabletToggleInput()
+        {
+#if ENABLE_INPUT_SYSTEM
+            var kb = UnityEngine.InputSystem.Keyboard.current;
+            if (kb != null)
+            {
+                // Solo permitir cerrar con Escape si está abierta; la apertura es exclusivamente física tocando el objeto
+                if (kb.escapeKey.wasPressedThisFrame && TabletManager.Instance != null && TabletManager.Instance.IsTabletOpen)
+                {
+                    TabletManager.Instance.CloseTablet();
+                }
+            }
+#else
+            if (Input.GetKeyDown(KeyCode.Escape) && TabletManager.Instance != null && TabletManager.Instance.IsTabletOpen)
+            {
+                TabletManager.Instance.CloseTablet();
+            }
+#endif
+        }
+
+        private void HandleTabletShortcuts()
+        {
+            if (TabletManager.Instance == null) return;
+
+#if ENABLE_INPUT_SYSTEM
+            var kb = UnityEngine.InputSystem.Keyboard.current;
+            if (kb != null)
+            {
+                if (kb.digit1Key.wasPressedThisFrame || kb.numpad1Key.wasPressedThisFrame)
+                    TabletManager.Instance.ShowImages();
+                else if (kb.digit2Key.wasPressedThisFrame || kb.numpad2Key.wasPressedThisFrame)
+                    TabletManager.Instance.ShowCamera();
+                else if (kb.digit3Key.wasPressedThisFrame || kb.numpad3Key.wasPressedThisFrame)
+                    TabletManager.Instance.ShowStore();
+                else if (kb.hKey.wasPressedThisFrame)
+                    TabletManager.Instance.ShowHome();
+                else if (kb.escapeKey.wasPressedThisFrame)
+                    TabletManager.Instance.CloseTablet();
+            }
+#else
+            if (Input.GetKeyDown(KeyCode.Alpha1) || Input.GetKeyDown(KeyCode.Keypad1))
+                TabletManager.Instance.ShowImages();
+            else if (Input.GetKeyDown(KeyCode.Alpha2) || Input.GetKeyDown(KeyCode.Keypad2))
+                TabletManager.Instance.ShowCamera();
+            else if (Input.GetKeyDown(KeyCode.Alpha3) || Input.GetKeyDown(KeyCode.Keypad3))
+                TabletManager.Instance.ShowStore();
+            else if (Input.GetKeyDown(KeyCode.H))
+                TabletManager.Instance.ShowHome();
+            else if (Input.GetKeyDown(KeyCode.Escape))
+                TabletManager.Instance.CloseTablet();
+#endif
+        }
+
+        public void SetCursorLock(bool locked)
+        {
+            isCursorLocked = locked;
+            Cursor.lockState = locked ? CursorLockMode.Locked : CursorLockMode.None;
+            Cursor.visible = !locked;
+
+            if (reticleDot != null)
+            {
+                reticleDot.gameObject.SetActive(locked);
+            }
+        }
+
+        private void HandleLook()
+        {
+            bool isCameraMode = TabletManager.Instance != null && TabletManager.Instance.IsTabletOpen && TabletManager.Instance.CurrentScreen == TabletScreen.Camera;
+            if (!isCursorLocked && !isCameraMode) return;
+
+            float mouseX = 0f;
+            float mouseY = 0f;
+
+#if ENABLE_INPUT_SYSTEM
+            var mouse = UnityEngine.InputSystem.Mouse.current;
+            if (mouse != null)
+            {
+                Vector2 delta = mouse.delta.ReadValue();
+                mouseX = delta.x * 0.1f * mouseSensitivity;
+                mouseY = delta.y * 0.1f * mouseSensitivity;
+            }
+#else
+            mouseX = Input.GetAxis("Mouse X") * mouseSensitivity;
+            mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity;
+#endif
+
+            yaw += mouseX;
+            pitch -= mouseY;
+            pitch = Mathf.Clamp(pitch, minPitch, maxPitch);
+
+            if (playerCamera != null)
+            {
+                playerCamera.transform.rotation = Quaternion.Euler(pitch, yaw, 0f);
+            }
+            else
+            {
+                transform.rotation = Quaternion.Euler(pitch, yaw, 0f);
+            }
+        }
+
+        private void HandleMovement()
+        {
+            Vector3 inputDir = Vector3.zero;
+
+#if ENABLE_INPUT_SYSTEM
+            var kb = UnityEngine.InputSystem.Keyboard.current;
+            if (kb != null)
+            {
+                if (kb.wKey.isPressed) inputDir.z += 1f;
+                if (kb.sKey.isPressed) inputDir.z -= 1f;
+                if (kb.aKey.isPressed) inputDir.x -= 1f;
+                if (kb.dKey.isPressed) inputDir.x += 1f;
+                if (kb.spaceKey.isPressed) inputDir.y += 1f;
+                if (kb.cKey.isPressed || kb.leftCtrlKey.isPressed) inputDir.y -= 1f;
+            }
+            bool isSprinting = kb != null && kb.leftShiftKey.isPressed;
+#else
+            if (Input.GetKey(KeyCode.W)) inputDir.z += 1f;
+            if (Input.GetKey(KeyCode.S)) inputDir.z -= 1f;
+            if (Input.GetKey(KeyCode.A)) inputDir.x -= 1f;
+            if (Input.GetKey(KeyCode.D)) inputDir.x += 1f;
+            if (Input.GetKey(KeyCode.Space)) inputDir.y += 1f;
+            if (Input.GetKey(KeyCode.C) || Input.GetKey(KeyCode.LeftControl)) inputDir.y -= 1f;
+            bool isSprinting = Input.GetKey(KeyCode.LeftShift);
+#endif
+
+            float currentSpeed = isSprinting ? sprintSpeed : walkSpeed;
+
+            Transform refTransform = (playerCamera != null) ? playerCamera.transform : transform;
+            Vector3 forward = refTransform.forward;
+            Vector3 right = refTransform.right;
+
+            Vector3 move = (forward * inputDir.z + right * inputDir.x).normalized * currentSpeed;
+            move.y = inputDir.y * verticalSpeed;
+
+            transform.position += move * Time.deltaTime;
+        }
+
+        private void HandleInteractionRaycast()
+        {
+            if (playerCamera == null) return;
+
+            Ray ray = new Ray(playerCamera.transform.position, playerCamera.transform.forward);
+
+            bool isInteractPressed = false;
+#if ENABLE_INPUT_SYSTEM
+            var mouse = UnityEngine.InputSystem.Mouse.current;
+            var kb = UnityEngine.InputSystem.Keyboard.current;
+            if (mouse != null && mouse.leftButton.wasPressedThisFrame) isInteractPressed = true;
+            if (kb != null && kb.eKey.wasPressedThisFrame) isInteractPressed = true;
+#else
+            if (Input.GetMouseButtonDown(0) || Input.GetKeyDown(KeyCode.E)) isInteractPressed = true;
+#endif
+
+            // 1. Si llevamos un dibujo en manos
+            if (heldObject != null)
+            {
+                PrinterController targetedPrinter = GetTargetedPrinter(ray);
+                if (targetedPrinter != null)
+                {
+                    SetPromptText("🖨️ <b>Impresora</b> - <b>[Clic Izquierdo]</b> o pulsa <b>[E]</b> para insertar el dibujo y escanear");
+                    SetReticleColor(Color.cyan);
+
+                    if (isInteractPressed)
+                    {
+                        ScannableDrawing drawingToInsert = heldObject.GetComponent<ScannableDrawing>();
+                        // Soltar de las manos
+                        heldObject = null;
+                        heldRigidbody = null;
+                        heldCollider = null;
+
+                        if (drawingToInsert != null)
+                        {
+                            targetedPrinter.InsertDrawing(drawingToInsert);
+                        }
+                    }
+                    return;
+                }
+
+                SetPromptText("🖐️ Llevando dibujo - <b>[Clic Izquierdo]</b> o <b>[E]</b> para soltarlo sobre una superficie");
+                SetReticleColor(Color.yellow);
+
+                if (isInteractPressed)
+                {
+                    DropHeldObject();
+                }
+                return;
+            }
+
+            // 2. Comprobar si apuntamos a la impresora con un dibujo dentro para retirarlo
+            PrinterController printer = GetTargetedPrinter(ray);
+            if (printer != null && printer.HasDrawingInside)
+            {
+                SetPromptText("🖨️ <b>Impresora</b> - <b>[Clic Izquierdo]</b> o pulsa <b>[E]</b> para retirar el dibujo escaneado");
+                SetReticleColor(Color.green);
+
+                if (isInteractPressed)
+                {
+                    ScannableDrawing retrieved = printer.RetrieveDrawing();
+                    if (retrieved != null)
+                    {
+                        PickupObject(retrieved.transform);
+                    }
+                }
+                return;
+            }
+
+            // 2. Priorizar detección de dibujos (ScannableDrawing) en la mira usando SphereCast y RaycastAll
+            ScannableDrawing targetedDrawing = null;
+            RaycastHit[] hits = Physics.SphereCastAll(ray, 0.25f, interactionRange);
+            float closestDist = float.MaxValue;
+
+            for (int i = 0; i < hits.Length; i++)
+            {
+                ScannableDrawing d = hits[i].collider.GetComponentInParent<ScannableDrawing>();
+                if (d != null && hits[i].distance < closestDist)
+                {
+                    closestDist = hits[i].distance;
+                    targetedDrawing = d;
+                }
+            }
+
+            if (targetedDrawing != null)
+            {
+                DrawingCanvas canvas = targetedDrawing.GetComponent<DrawingCanvas>();
+                string suffix = targetedDrawing.IsOriginal ? " <color=#60A5FA>(Original)</color>" : " <color=#FBBF24>(Copia)</color>";
+
+                bool isDrawPressed = false;
+#if ENABLE_INPUT_SYSTEM
+                if (kb != null && kb.fKey.wasPressedThisFrame) isDrawPressed = true;
+                if (mouse != null && mouse.rightButton.wasPressedThisFrame) isDrawPressed = true;
+#else
+                if (Input.GetKeyDown(KeyCode.F) || Input.GetMouseButtonDown(1)) isDrawPressed = true;
+#endif
+
+                if (canvas != null)
+                {
+                    SetPromptText($"🖐️ <b>[Clic / E]</b> Tomar  •  🖌️ <b>[F / Clic Der]</b> Dibujar en {targetedDrawing.GetArtworkData().title}{suffix}");
+                }
+                else
+                {
+                    SetPromptText($"🖐️ <b>[Clic Izquierdo]</b> o <b>[E]</b> para tomar {targetedDrawing.GetArtworkData().title}{suffix}");
+                }
+
+                SetReticleColor(targetedDrawing.IsOriginal ? Color.cyan : Color.yellow);
+
+                if (canvas != null && isDrawPressed)
+                {
+                    EnterDrawingMode(canvas);
+                    return;
+                }
+
+                if (isInteractPressed)
+                {
+                    PickupObject(targetedDrawing.transform);
+                }
+                return;
+            }
+
+            // 3. Si no hay dibujo en la mira, comprobar si apuntamos a la tableta física en la mesa
+            RaycastHit hit;
+            bool hitTablet = false;
+            if (Physics.Raycast(ray, out hit, interactionRange))
+            {
+                if (hit.collider.GetComponentInParent<TabletManager>() != null ||
+                    hit.collider.GetComponentInParent<TabletInteractiveScreen>() != null ||
+                    hit.collider.name.ToLower().Contains("tableta") ||
+                    hit.collider.name.ToLower().Contains("pantalla"))
+                {
+                    hitTablet = true;
+                }
+            }
+
+            if (!hitTablet)
+            {
+                RaycastHit[] tHits = Physics.SphereCastAll(ray, 0.25f, interactionRange);
+                for (int i = 0; i < tHits.Length; i++)
+                {
+                    var col = tHits[i].collider;
+                    if (col.GetComponentInParent<TabletManager>() != null ||
+                        col.GetComponentInParent<TabletInteractiveScreen>() != null ||
+                        col.name.ToLower().Contains("tableta") ||
+                        col.name.ToLower().Contains("pantalla"))
+                    {
+                        hitTablet = true;
+                        break;
+                    }
+                }
+            }
+
+            if (hitTablet)
+            {
+                SetPromptText("📱 <b>Tableta</b> - <b>[Clic Izquierdo]</b> o pulsa <b>[E]</b> para usarla");
+                SetReticleColor(Color.cyan);
+
+                if (isInteractPressed)
+                {
+                    if (TabletManager.Instance != null)
+                        TabletManager.Instance.OpenTablet();
+                }
+                return;
+            }
+
+            // Sin interacción en la mira
+            SetPromptText("");
+            SetReticleColor(Color.white);
+        }
+
+        private PrinterController GetTargetedPrinter(Ray ray)
+        {
+            RaycastHit hit;
+            if (Physics.Raycast(ray, out hit, interactionRange, ~0, QueryTriggerInteraction.Collide))
+            {
+                var pc = hit.collider.GetComponentInParent<PrinterController>();
+                if (pc != null) return pc;
+                if (hit.collider.name.ToLower().Contains("impresora"))
+                    return PrinterController.Instance;
+            }
+
+            RaycastHit[] hits = Physics.SphereCastAll(ray, 0.35f, interactionRange, ~0, QueryTriggerInteraction.Collide);
+            for (int i = 0; i < hits.Length; i++)
+            {
+                var pc = hits[i].collider.GetComponentInParent<PrinterController>();
+                if (pc != null) return pc;
+                if (hits[i].collider.name.ToLower().Contains("impresora"))
+                    return PrinterController.Instance;
+            }
+
+            return null;
+        }
+
+        #region Modo Dibujo Interactivo
+
+        public void EnterDrawingMode(DrawingCanvas canvas)
+        {
+            if (canvas == null) return;
+            isDrawingMode = true;
+            activeDrawingCanvas = canvas;
+            if (playerCamera != null)
+            {
+                normalPlayerFOV = playerCamera.fieldOfView;
+            }
+            drawingTargetFOV = 35f; // Enfoque cercano por defecto al papel
+            SetCursorLock(false);
+            UpdateDrawingPrompt();
+            DrawingUIOverlay.Instance.Show(canvas);
+        }
+
+        public void ExitDrawingMode()
+        {
+            if (activeDrawingCanvas != null)
+            {
+                activeDrawingCanvas.StopStroke();
+            }
+            isDrawingMode = false;
+            activeDrawingCanvas = null;
+            DrawingUIOverlay.Instance.Hide();
+            SetCursorLock(true);
+            SetPromptText("");
+            StartCoroutine(RestoreCameraFOV());
+        }
+
+        public void AdjustDrawingZoom(float deltaFOV)
+        {
+            drawingTargetFOV = Mathf.Clamp(drawingTargetFOV + deltaFOV, minDrawingFOV, maxDrawingFOV);
+            UpdateDrawingPrompt();
+        }
+
+        public void ResetDrawingZoom()
+        {
+            drawingTargetFOV = 35f;
+            UpdateDrawingPrompt();
+        }
+
+        private void UpdateDrawingPrompt()
+        {
+            float zoom = 60f / drawingTargetFOV;
+            SetPromptText($"🖌️ <b>Mesa de Dibujo</b>: Clic y arrastra para pintar  •  [Rueda / Q-E] Zoom ({zoom:F1}x)  •  <b>[F / ESC]</b> Salir");
+        }
+
+        private System.Collections.IEnumerator RestoreCameraFOV()
+        {
+            if (playerCamera == null) yield break;
+            while (Mathf.Abs(playerCamera.fieldOfView - normalPlayerFOV) > 0.1f && !isDrawingMode)
+            {
+                playerCamera.fieldOfView = Mathf.Lerp(playerCamera.fieldOfView, normalPlayerFOV, Time.deltaTime * 12f);
+                yield return null;
+            }
+            if (!isDrawingMode)
+            {
+                playerCamera.fieldOfView = normalPlayerFOV;
+            }
+        }
+
+        private void HandleDrawingMode()
+        {
+            // Salir con tecla F o Escape
+            bool exitPressed = false;
+#if ENABLE_INPUT_SYSTEM
+            var kb = UnityEngine.InputSystem.Keyboard.current;
+            if (kb != null && (kb.fKey.wasPressedThisFrame || kb.escapeKey.wasPressedThisFrame)) exitPressed = true;
+#else
+            if (Input.GetKeyDown(KeyCode.F) || Input.GetKeyDown(KeyCode.Escape)) exitPressed = true;
+#endif
+
+            if (exitPressed)
+            {
+                ExitDrawingMode();
+                return;
+            }
+
+            if (activeDrawingCanvas == null)
+            {
+                ExitDrawingMode();
+                return;
+            }
+
+            // Manejar entrada de zoom para la hoja de dibujo (Rueda del ratón o teclas Q / E)
+            float scroll = 0f;
+#if ENABLE_INPUT_SYSTEM
+            var mouse = UnityEngine.InputSystem.Mouse.current;
+            if (mouse != null) scroll = mouse.scroll.ReadValue().y;
+            if (kb != null)
+            {
+                if (kb.eKey.isPressed || kb.numpadPlusKey.isPressed) scroll += 120f * Time.deltaTime * 5f;
+                if (kb.qKey.isPressed || kb.numpadMinusKey.isPressed) scroll -= 120f * Time.deltaTime * 5f;
+            }
+#else
+            scroll = Input.GetAxis("Mouse ScrollWheel") * 120f;
+            if (Input.GetKey(KeyCode.E) || Input.GetKey(KeyCode.KeypadPlus)) scroll += 120f * Time.deltaTime * 5f;
+            if (Input.GetKey(KeyCode.Q) || Input.GetKey(KeyCode.KeypadMinus)) scroll -= 120f * Time.deltaTime * 5f;
+#endif
+
+            if (Mathf.Abs(scroll) > 0.05f)
+            {
+                float step = (scroll / 120f) * 6f;
+                drawingTargetFOV = Mathf.Clamp(drawingTargetFOV - step, minDrawingFOV, maxDrawingFOV);
+                UpdateDrawingPrompt();
+            }
+
+            if (playerCamera != null)
+            {
+                playerCamera.fieldOfView = Mathf.Lerp(playerCamera.fieldOfView, drawingTargetFOV, Time.deltaTime * drawingZoomSpeed);
+                float zoomRatio = 60f / playerCamera.fieldOfView;
+                DrawingUIOverlay.Instance.UpdateZoomText($"{zoomRatio:F1}x");
+            }
+
+            Vector3 mousePos;
+            bool isMouseDown = false;
+            bool isMouseUp = false;
+
+#if ENABLE_INPUT_SYSTEM
+            mousePos = mouse != null ? (Vector3)mouse.position.ReadValue() : Input.mousePosition;
+            if (mouse != null)
+            {
+                isMouseDown = mouse.leftButton.isPressed;
+                isMouseUp = mouse.leftButton.wasReleasedThisFrame;
+            }
+#else
+            mousePos = Input.mousePosition;
+            isMouseDown = Input.GetMouseButton(0);
+            isMouseUp = Input.GetMouseButtonUp(0);
+#endif
+
+            // Evitar dibujar si el cursor está sobre un elemento de la interfaz (los botones de colores o tamaños)
+            bool isOverUI = UnityEngine.EventSystems.EventSystem.current != null && UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject();
+
+            if (isMouseDown && !isOverUI && playerCamera != null)
+            {
+                Ray ray = playerCamera.ScreenPointToRay(mousePos);
+                if (Physics.Raycast(ray, out RaycastHit hit, 10f))
+                {
+                    DrawingCanvas hitCanvas = hit.collider.GetComponentInParent<DrawingCanvas>();
+                    if (hitCanvas == activeDrawingCanvas)
+                    {
+                        activeDrawingCanvas.DrawAtWorldPoint(hit.point);
+                    }
+                }
+            }
+            else if (isMouseUp)
+            {
+                activeDrawingCanvas.StopStroke();
+            }
+        }
+
+        private void HandleInspectionZoom()
+        {
+            if (playerCamera == null || isDrawingMode) return;
+
+            bool isHoldingRightClick = false;
+#if ENABLE_INPUT_SYSTEM
+            var mouse = UnityEngine.InputSystem.Mouse.current;
+            if (mouse != null && mouse.rightButton.isPressed) isHoldingRightClick = true;
+#else
+            if (Input.GetMouseButton(1)) isHoldingRightClick = true;
+#endif
+
+            // Si llevamos un dibujo sostenido en manos, mantener clic derecho acerca la hoja a los ojos para inspeccionar el arte
+            float targetFOV = (isHoldingRightClick && heldObject != null) ? 32f : normalPlayerFOV;
+            if (Mathf.Abs(playerCamera.fieldOfView - targetFOV) > 0.05f)
+            {
+                playerCamera.fieldOfView = Mathf.Lerp(playerCamera.fieldOfView, targetFOV, Time.deltaTime * 10f);
+            }
+        }
+
+        #endregion
+
+        private void PickupObject(Transform obj)
+        {
+            // La tableta y su pantalla son ESTÁTICAS, jamás se toman
+            if (obj.GetComponentInParent<TabletManager>() != null ||
+                obj.name.ToLower().Contains("tableta") ||
+                obj.name.ToLower().Contains("pantalla"))
+            {
+                return;
+            }
+
+            heldObject = obj;
+            heldRigidbody = obj.GetComponent<Rigidbody>();
+            heldCollider = obj.GetComponent<Collider>();
+
+            if (heldRigidbody != null)
+            {
+                heldRigidbody.isKinematic = true;
+            }
+
+            if (heldCollider != null)
+            {
+                heldCollider.enabled = false;
+            }
+        }
+
+        private void DropHeldObject()
+        {
+            if (heldObject == null) return;
+
+            // Detectar la superficie apuntada (mesa, impresora, suelo) para apoyar el dibujo
+            RaycastHit hit;
+            if (Physics.Raycast(playerCamera.transform.position, playerCamera.transform.forward, out hit, interactionRange, ~0, QueryTriggerInteraction.Ignore))
+            {
+                heldObject.position = hit.point + hit.normal * 0.025f;
+                heldObject.rotation = Quaternion.FromToRotation(Vector3.up, hit.normal);
+            }
+            else
+            {
+                heldObject.position = playerCamera.transform.position + playerCamera.transform.forward * 1.5f;
+            }
+
+            // Asegurar que el dibujo tenga un BoxCollider adecuado para tomarlo sin fallar
+            BoxCollider bc = heldObject.GetComponent<BoxCollider>();
+            if (bc == null)
+            {
+                bc = heldObject.gameObject.AddComponent<BoxCollider>();
+                bc.size = new Vector3(10f, 2f, 10f);
+            }
+            bc.enabled = true;
+
+            if (heldCollider != null)
+            {
+                heldCollider.enabled = true;
+            }
+
+            if (heldRigidbody != null)
+            {
+                heldRigidbody.isKinematic = true; // Estable sobre la superficie, sin caer al vacío
+            }
+
+            heldObject = null;
+            heldRigidbody = null;
+            heldCollider = null;
+
+            SetPromptText("✓ Dibujo colocado en la superficie. Pulsa <b>[Clic]</b> o <b>[E]</b> para volver a tomarlo.");
+        }
+
+        private void UpdateHeldObjectPosition()
+        {
+            if (heldObject == null || playerCamera == null) return;
+
+            Vector3 targetPosition = playerCamera.transform.position
+                + playerCamera.transform.forward * holdOffset.z
+                + playerCamera.transform.right * holdOffset.x
+                + playerCamera.transform.up * holdOffset.y;
+
+            // La cara ilustrada del dibujo (+Y local) mira directamente hacia la cámara del jugador
+            Quaternion targetRotation = Quaternion.LookRotation(playerCamera.transform.forward, playerCamera.transform.up) * Quaternion.Euler(90, 180, 0);
+
+            heldObject.position = Vector3.Lerp(heldObject.position, targetPosition, Time.deltaTime * carryLerpSpeed);
+            heldObject.rotation = Quaternion.Slerp(heldObject.rotation, targetRotation, Time.deltaTime * carryLerpSpeed);
+        }
+
+        private void CreateCrosshairUI()
+        {
+            crosshairCanvas = new GameObject("PlayerCrosshairHUD", typeof(Canvas), typeof(CanvasScaler));
+            Canvas canvas = crosshairCanvas.GetComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.sortingOrder = 950;
+
+            // Punto de mira central
+            GameObject dotObj = new GameObject("ReticleDot", typeof(RectTransform), typeof(Image));
+            dotObj.transform.SetParent(crosshairCanvas.transform, false);
+            RectTransform dotRt = dotObj.GetComponent<RectTransform>();
+            dotRt.sizeDelta = new Vector2(8, 8);
+            dotRt.anchorMin = new Vector2(0.5f, 0.5f);
+            dotRt.anchorMax = new Vector2(0.5f, 0.5f);
+
+            reticleDot = dotObj.GetComponent<Image>();
+            reticleDot.color = Color.white;
+
+            // Texto de ayuda para interacción con objetos (UBICADO ARRIBA PARA NO TAPAR LA MIRA)
+            GameObject promptObj = new GameObject("InteractionPromptText", typeof(RectTransform), typeof(Text));
+            promptObj.transform.SetParent(crosshairCanvas.transform, false);
+            RectTransform pRt = promptObj.GetComponent<RectTransform>();
+            pRt.sizeDelta = new Vector2(850, 60);
+            pRt.anchorMin = new Vector2(0.5f, 0.88f);
+            pRt.anchorMax = new Vector2(0.5f, 0.88f);
+            pRt.pivot = new Vector2(0.5f, 0.5f);
+            pRt.anchoredPosition = Vector2.zero;
+
+            interactionPromptText = promptObj.GetComponent<Text>();
+            interactionPromptText.font = UIFontHelper.GetDefaultFont();
+            interactionPromptText.fontSize = 16;
+            interactionPromptText.fontStyle = FontStyle.Bold;
+            interactionPromptText.alignment = TextAnchor.MiddleCenter;
+            interactionPromptText.color = Color.white;
+
+            Outline outline = promptObj.AddComponent<Outline>();
+            outline.effectColor = new Color(0f, 0f, 0f, 0.85f);
+            outline.effectDistance = new Vector2(1.5f, -1.5f);
+
+            // Texto de ayuda para modo cámara (UBICADO ABAJO PARA NO TAPAR EL VISOR)
+            GameObject camPromptObj = new GameObject("CameraPromptText", typeof(RectTransform), typeof(Text));
+            camPromptObj.transform.SetParent(crosshairCanvas.transform, false);
+            RectTransform cpRt = camPromptObj.GetComponent<RectTransform>();
+            cpRt.sizeDelta = new Vector2(850, 50);
+            cpRt.anchorMin = new Vector2(0.5f, 0.07f);
+            cpRt.anchorMax = new Vector2(0.5f, 0.07f);
+            cpRt.pivot = new Vector2(0.5f, 0.5f);
+            cpRt.anchoredPosition = Vector2.zero;
+
+            cameraPromptText = camPromptObj.GetComponent<Text>();
+            cameraPromptText.font = UIFontHelper.GetDefaultFont();
+            cameraPromptText.fontSize = 14;
+            cameraPromptText.fontStyle = FontStyle.Bold;
+            cameraPromptText.alignment = TextAnchor.MiddleCenter;
+            cameraPromptText.color = new Color(0.95f, 0.95f, 0.95f);
+
+            Outline camOutline = camPromptObj.AddComponent<Outline>();
+            camOutline.effectColor = new Color(0f, 0f, 0f, 0.85f);
+            camOutline.effectDistance = new Vector2(1.5f, -1.5f);
+        }
+
+        private void SetPromptText(string msg)
+        {
+            if (interactionPromptText != null)
+                interactionPromptText.text = msg;
+            if (cameraPromptText != null && !string.IsNullOrEmpty(msg))
+                cameraPromptText.text = "";
+        }
+
+        private void SetCameraPromptText(string msg)
+        {
+            if (cameraPromptText != null)
+                cameraPromptText.text = msg;
+            if (interactionPromptText != null && !string.IsNullOrEmpty(msg))
+                interactionPromptText.text = "";
+        }
+
+        private void SetReticleColor(Color c)
+        {
+            if (reticleDot != null)
+                reticleDot.color = c;
+        }
+    }
+}
