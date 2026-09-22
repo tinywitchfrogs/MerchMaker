@@ -8,7 +8,7 @@ namespace ArtSimulator
         [Header("Datos de la Ilustración")]
         [SerializeField] private string artworkTitle = "Ilustración Artística";
         [SerializeField] private Texture2D artworkTexture;
-        [SerializeField] private bool isOriginal = true;
+        [SerializeField] public bool isOriginal = true;
 
         public bool IsOriginal => isOriginal;
 
@@ -21,6 +21,7 @@ namespace ArtSimulator
         private static readonly System.Collections.Generic.HashSet<ScannableDrawing> allDrawings = new System.Collections.Generic.HashSet<ScannableDrawing>();
         private static bool globalAurasVisible = true;
 
+        
         /// <summary>
         /// Oculta o muestra todas las auras de dibujos (originales y copias), útil al tomar fotos con la cámara.
         /// </summary>
