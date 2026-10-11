@@ -8,6 +8,8 @@ namespace ArtSimulator
         public int dineroGanado = 100;
         private PlayerEconomy playerEconomy;
 
+        [SerializeField] GameObject producto;
+
         private void Start()
         {
             playerEconomy = FindObjectOfType<PlayerEconomy>();
@@ -15,7 +17,7 @@ namespace ArtSimulator
 
         private void OnTriggerEnter(Collider other)
         {
-            if (other.CompareTag("ZonaDinero") && gameObject.name == "ScannableDrawing")
+            if (other.CompareTag("ZonaDinero") && gameObject.name == "Dibujo_Copia_Ilustración Artística")
             {
                 ConvertirADinero();
             }
@@ -28,7 +30,7 @@ namespace ArtSimulator
                 playerEconomy.AgregarDinero(dineroGanado);
             }
 
-            Destroy(gameObject);
+            Destroy(producto);
         }
     }
 }
