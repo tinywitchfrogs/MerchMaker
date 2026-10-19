@@ -102,6 +102,10 @@ namespace ArtSimulator
         private void Start()
         {
             SetCursorLock(true);
+            if (TabletManager.Instance != null && !TabletManager.Instance.IsTabletOpen)
+            {
+                TabletManager.Instance.CloseTablet();
+            }
         }
 
         private void Update()
@@ -164,22 +168,27 @@ namespace ArtSimulator
 
         private void HandleTabletToggleInput()
         {
+            bool isEscPressed = false;
 #if ENABLE_INPUT_SYSTEM
             var kb = UnityEngine.InputSystem.Keyboard.current;
-            if (kb != null)
+            if (kb != null && kb.escapeKey.wasPressedThisFrame) isEscPressed = true;
+#else
+            if (Input.GetKeyDown(KeyCode.Escape)) isEscPressed = true;
+#endif
+            if (isEscPressed)
             {
-                // Solo permitir cerrar con Escape si está abierta; la apertura es exclusivamente física tocando el objeto
-                if (kb.escapeKey.wasPressedThisFrame && TabletManager.Instance != null && TabletManager.Instance.IsTabletOpen)
+                var tm = TabletManager.Instance;
+                var ui = tm != null ? tm.GetComponent<TabletUIController>() : FindFirstObjectByType<TabletUIController>();
+                var canvasObj = ui != null ? ui.GetTabletCanvasObject() : GameObject.Find("TabletCanvas");
+                bool isCanvasActive = canvasObj != null && canvasObj.activeInHierarchy;
+
+                if ((tm != null && tm.IsTabletOpen) || isCanvasActive)
                 {
-                    TabletManager.Instance.CloseTablet();
+                    if (tm != null) tm.CloseTablet();
+                    if (canvasObj != null) canvasObj.SetActive(false);
+                    SetCursorLock(true);
                 }
             }
-#else
-            if (Input.GetKeyDown(KeyCode.Escape) && TabletManager.Instance != null && TabletManager.Instance.IsTabletOpen)
-            {
-                TabletManager.Instance.CloseTablet();
-            }
-#endif
         }
 
         private void HandleTabletShortcuts()
@@ -431,24 +440,8 @@ namespace ArtSimulator
                 if (printer != null && printer.HasDrawingInside && targetedDrawing == printer.CurrentInsertedDrawing)
                 {
                     string artTitle = targetedDrawing.GetArtworkData().title;
-                    SetPromptText($"🖨️ <b>[Clic / E]</b> Retirar '{artTitle}'  •  📑 <b>[R / Clic Der]</b> Imprimir copia");
+                    SetPromptText($"🖨️ <b>[Clic / E]</b> Retirar '{artTitle}' del escáner");
                     SetReticleColor(Color.cyan);
-
-                    bool isPrintKey = false;
-#if ENABLE_INPUT_SYSTEM
-                    var mouseDev = UnityEngine.InputSystem.Mouse.current;
-                    if (kb != null && (kb.rKey.wasPressedThisFrame || kb.spaceKey.wasPressedThisFrame)) isPrintKey = true;
-                    if (mouseDev != null && mouseDev.rightButton.wasPressedThisFrame) isPrintKey = true;
-#else
-                    if (Input.GetKeyDown(KeyCode.R) || Input.GetKeyDown(KeyCode.Space) || Input.GetMouseButtonDown(1)) isPrintKey = true;
-#endif
-
-                    if (isPrintKey)
-                    {
-                        printer.PrintArtwork(targetedDrawing.GetArtworkData());
-                        SetPromptText($"✓ ¡Imprimiendo copia física de '{artTitle}'! Revisa la bandeja.");
-                        return;
-                    }
 
                     if (isInteractPressed)
                     {
@@ -513,24 +506,8 @@ namespace ArtSimulator
             {
                 ScannableDrawing insideDrawing = printer.CurrentInsertedDrawing;
                 string artTitle = insideDrawing != null ? insideDrawing.GetArtworkData().title : "dibujo";
-                SetPromptText($"🖨️ <b>[Clic / E]</b> Retirar '{artTitle}'  •  📑 <b>[R / Clic Der]</b> Imprimir copia");
+                SetPromptText($"🖨️ <b>[Clic / E]</b> Retirar '{artTitle}' del escáner");
                 SetReticleColor(Color.green);
-
-                bool isPrintKey = false;
-#if ENABLE_INPUT_SYSTEM
-                var mouseDev = UnityEngine.InputSystem.Mouse.current;
-                if (kb != null && (kb.rKey.wasPressedThisFrame || kb.spaceKey.wasPressedThisFrame)) isPrintKey = true;
-                if (mouseDev != null && mouseDev.rightButton.wasPressedThisFrame) isPrintKey = true;
-#else
-                if (Input.GetKeyDown(KeyCode.R) || Input.GetKeyDown(KeyCode.Space) || Input.GetMouseButtonDown(1)) isPrintKey = true;
-#endif
-
-                if (isPrintKey && insideDrawing != null)
-                {
-                    printer.PrintArtwork(insideDrawing.GetArtworkData());
-                    SetPromptText($"✓ ¡Imprimiendo copia física de '{artTitle}'! Revisa la bandeja.");
-                    return;
-                }
 
                 if (isInteractPressed)
                 {

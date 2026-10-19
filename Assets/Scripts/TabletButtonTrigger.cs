@@ -35,14 +35,6 @@ namespace ArtSimulator
         {
             actionName = name;
             onClickCallback = callback;
-
-            // Sincronizar con el Button de Unity para que ambos caminos invoquen el mismo TriggerClick debounced
-            Button btn = GetComponent<Button>();
-            if (btn != null)
-            {
-                btn.onClick.RemoveAllListeners();
-                btn.onClick.AddListener(TriggerClick);
-            }
         }
 
         public void OnPointerClick(PointerEventData eventData)
@@ -68,7 +60,14 @@ namespace ArtSimulator
             lastTriggerTime = currentTime;
 
             Debug.Log($"<color=yellow>[TabletButtonTrigger]</color> Botón presionado: <b>{actionName}</b> ({gameObject.name})");
-            onClickCallback?.Invoke();
+            if (onClickCallback != null)
+            {
+                onClickCallback.Invoke();
+            }
+            else if (btn != null)
+            {
+                btn.onClick.Invoke();
+            }
         }
 
         public void OnPointerEnter(PointerEventData eventData)

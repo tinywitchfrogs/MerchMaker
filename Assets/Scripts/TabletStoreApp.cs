@@ -55,8 +55,6 @@ namespace ArtSimulator
             SelectStoreTab();
             RefreshStoreProducts();
             RefreshOrdersList();
-
-            ordersRoutine = StartCoroutine(AutoOrderGeneratorRoutine());
         }
 
         private void OnDestroy()
@@ -65,11 +63,6 @@ namespace ArtSimulator
             {
                 TabletManager.Instance.OnProductsChanged -= RefreshStoreProducts;
                 TabletManager.Instance.OnOrdersChanged -= RefreshOrdersList;
-            }
-
-            if (ordersRoutine != null)
-            {
-                StopCoroutine(ordersRoutine);
             }
         }
 
@@ -354,17 +347,8 @@ namespace ArtSimulator
                 SafeDestroy(toDestroy[i]);
             }
 
-            // Recopilar todas las obras disponibles (dibujos escaneados y fotos de cámara)
+            // Para la tienda solo se utilizan las fotografías capturadas con la cámara (las obras escaneadas solo se usan para hacer copias)
             List<ArtworkData> availableArtworks = new List<ArtworkData>();
-            if (TabletManager.Instance.ScannedArtworks != null)
-            {
-                for (int i = 0; i < TabletManager.Instance.ScannedArtworks.Count; i++)
-                {
-                    ArtworkData art = TabletManager.Instance.ScannedArtworks[i];
-                    if (art != null && art.texture != null)
-                        availableArtworks.Add(art);
-                }
-            }
             if (TabletManager.Instance.PhotoArtworks != null)
             {
                 for (int i = 0; i < TabletManager.Instance.PhotoArtworks.Count; i++)
@@ -378,7 +362,7 @@ namespace ArtSimulator
             if (availableArtworks.Count == 0)
             {
                 if (modalErrorText != null)
-                    modalErrorText.text = "¡Aún no has escaneado ningún dibujo ni tomado fotos!\nEscanea un dibujo en la impresora o toma una foto primero.";
+                    modalErrorText.text = "¡Aún no has tomado fotografías!\nToma una foto con la app de Cámara primero para poder publicarla en la tienda.";
                 return;
             }
 
@@ -593,28 +577,6 @@ namespace ArtSimulator
             reqText.font = UIFontHelper.GetDefaultFont();
 
             return cardObj;
-        }
-
-        private IEnumerator AutoOrderGeneratorRoutine()
-        {
-            while (true)
-            {
-                yield return new WaitForSeconds(orderCheckInterval);
-
-                if (TabletManager.Instance != null)
-                {
-                    IReadOnlyList<ProductItem> prods = TabletManager.Instance.StoreProducts;
-                    if (prods != null && prods.Count > 0 && TabletManager.Instance.CurrentOrders.Count < maxActiveOrders)
-                    {
-                        // Elegir un producto al azar
-                        ProductItem chosen = prods[Random.Range(0, prods.Count)];
-                        int requestedCount = Random.Range(1, 4);
-
-                        OrderItem newOrder = new OrderItem(chosen, requestedCount);
-                        TabletManager.Instance.AddOrder(newOrder);
-                    }
-                }
-            }
         }
 
         #endregion

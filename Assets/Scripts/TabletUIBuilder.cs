@@ -1068,7 +1068,7 @@ namespace ArtSimulator
 
         private void OnDestroy()
         {
-            var tm = GetComponent<TabletManager>() ?? TabletManager.Instance;
+            var tm = GetComponent<TabletManager>() != null ? GetComponent<TabletManager>() : TabletManager.Instance;
             if (tm != null)
             {
                 tm.OnTabletOpenStateChanged -= OnTabletOpenChanged;
@@ -1077,7 +1077,7 @@ namespace ArtSimulator
 
         public void HookEvents()
         {
-            var tm = GetComponent<TabletManager>() ?? TabletManager.Instance;
+            var tm = GetComponent<TabletManager>() != null ? GetComponent<TabletManager>() : TabletManager.Instance;
             if (tm != null && BuiltCanvas != null)
             {
                 tm.OnTabletOpenStateChanged -= OnTabletOpenChanged;

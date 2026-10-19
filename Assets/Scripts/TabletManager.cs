@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -54,6 +55,29 @@ namespace ArtSimulator
         public bool IsTabletOpen => isTabletOpen;
         public event Action<bool> OnTabletOpenStateChanged;
 
+        [Header("Configuración de Pedidos (Ritmo Paulatino)")]
+        [Tooltip("Tiempo de espera inicial (en segundos) antes del primer pedido")]
+        [SerializeField] private float initialOrderDelay = 35f;
+
+        [Tooltip("Intervalo mínimo base entre pedidos (en segundos)")]
+        [SerializeField] private float minOrderInterval = 35f;
+
+        [Tooltip("Intervalo máximo base entre pedidos (en segundos)")]
+        [SerializeField] private float maxOrderInterval = 60f;
+
+        [Tooltip("Tiempo adicional de espera por cada pedido activo pendiente")]
+        [SerializeField] private float delayPerActiveOrder = 15f;
+
+        [Tooltip("Cantidad máxima de pedidos pendientes en la tableta")]
+        [SerializeField] private int maxActiveOrders = 3;
+
+        [Header("Audio y Notificación")]
+        [Tooltip("Clip de sonido de vibración para pedidos nuevos")]
+        [SerializeField] private AudioClip vibrationSoundClip;
+        private Coroutine orderRoutine;
+        private AudioSource audioSource;
+        private static AudioClip cachedOrderVibration;
+
         private void SetPhysicalTabletVisuals(bool visible)
         {
             Renderer[] renderers = GetComponentsInChildren<Renderer>(true);
@@ -69,12 +93,24 @@ namespace ArtSimulator
             OnTabletOpenStateChanged?.Invoke(true);
             SetPhysicalTabletVisuals(false); // Ocultar modelo en la mesa mientras se usa
 
-            var ui = GetComponent<TabletUIController>();
+            var ui = GetComponent<TabletUIController>() ?? FindFirstObjectByType<TabletUIController>();
             if (ui != null)
             {
                 var c = ui.GetTabletCanvasObject();
                 if (c != null) c.SetActive(true);
                 ui.UpdateActiveScreen(currentScreen);
+            }
+            else
+            {
+                var canvases = Resources.FindObjectsOfTypeAll<Canvas>();
+                for (int i = 0; i < canvases.Length; i++)
+                {
+                    if (canvases[i].name == "TabletCanvas")
+                    {
+                        canvases[i].gameObject.SetActive(true);
+                        break;
+                    }
+                }
             }
         }
 
@@ -85,11 +121,23 @@ namespace ArtSimulator
             SetPhysicalTabletVisuals(true); // Reaparecer en la mesa al guardarla
             ScannableDrawing.SetAllAurasVisible(true); // Restaurar auras al guardar la tableta
 
-            var ui = GetComponent<TabletUIController>();
+            var ui = GetComponent<TabletUIController>() ?? FindFirstObjectByType<TabletUIController>();
             if (ui != null)
             {
                 var c = ui.GetTabletCanvasObject();
                 if (c != null) c.SetActive(false);
+            }
+            else
+            {
+                var canvases = Resources.FindObjectsOfTypeAll<Canvas>();
+                for (int i = 0; i < canvases.Length; i++)
+                {
+                    if (canvases[i].name == "TabletCanvas")
+                    {
+                        canvases[i].gameObject.SetActive(false);
+                        break;
+                    }
+                }
             }
         }
 
@@ -108,7 +156,11 @@ namespace ArtSimulator
             else if (Instance != this)
             {
                 Destroy(this); // Solo destruir el componente duplicado, NO el GameObject entero
+                return;
             }
+
+            isTabletOpen = false;
+            currentScreen = TabletScreen.Home;
         }
 
         private void Start()
@@ -118,10 +170,19 @@ namespace ArtSimulator
                 scannedArtworks.Clear();
                 capturedPhotos.Clear();
                 photoArtworks.Clear();
+                orderRoutine = StartCoroutine(OrderGeneratorRoutine());
             }
             SetPhysicalTabletVisuals(true);
             currentScreen = TabletScreen.Home;
             CloseTablet(); // La tableta debe iniciar cerrada sobre la mesa de trabajo
+        }
+
+        private void OnDestroy()
+        {
+            if (orderRoutine != null)
+            {
+                StopCoroutine(orderRoutine);
+            }
         }
 
         public void ShowScreen(TabletScreen screen)
@@ -197,8 +258,150 @@ namespace ArtSimulator
         {
             if (order == null) return;
             currentOrders.Insert(0, order);
-            Debug.Log($"<color=magenta>[Pedidos]</color> ¡Nuevo pedido entrante! #{order.orderId} de {order.product.title} (x{order.unitsRequested})");
+            Debug.Log($"<color=magenta>[Pedidos]</color> 🔔 ¡Nuevo pedido entrante! #{order.orderId} de {order.product.title} (x{order.unitsRequested})");
+            PlayOrderNotificationSound();
             OnOrdersChanged?.Invoke();
+        }
+
+        private IEnumerator OrderGeneratorRoutine()
+        {
+            // Esperar pacientemente a que el jugador publique sus primeros proyectos/productos en la tienda
+            while (storeProducts == null || storeProducts.Count == 0)
+            {
+                yield return new WaitForSeconds(1f);
+            }
+
+            // Una vez que sale el primer proyecto en la tienda, dar un tiempo de margen paulatino antes de recibir el primer pedido
+            yield return new WaitForSeconds(initialOrderDelay);
+
+            int totalOrdersGenerated = 0;
+
+            while (true)
+            {
+                // Solo si el jugador tiene proyectos a la venta y no hemos alcanzado el límite máximo de pedidos simultáneos
+                if (storeProducts != null && storeProducts.Count > 0 && currentOrders.Count < maxActiveOrders)
+                {
+                    ProductItem chosenProduct = GetProductForNewOrder();
+                    if (chosenProduct != null)
+                    {
+                        int requestedCount = UnityEngine.Random.Range(1, 4);
+                        OrderItem newOrder = new OrderItem(chosenProduct, requestedCount);
+                        AddOrder(newOrder);
+                        totalOrdersGenerated++;
+                    }
+                }
+
+                // Cálculo paulatino y dinámico del siguiente intervalo:
+                // 1. Rango base aleatorio para variedad natural (ej. 35s - 60s)
+                float baseInterval = UnityEngine.Random.Range(minOrderInterval, maxOrderInterval);
+
+                // 2. Espera adicional si el jugador ya tiene pedidos acumulados (backpressure)
+                float backpressure = currentOrders.Count * delayPerActiveOrder;
+
+                // 3. Progresión paulatina inicial: los primeros pedidos tienen margen extra de aprendizaje
+                float warmupBonus = 0f;
+                if (totalOrdersGenerated < 2)
+                {
+                    warmupBonus = 15f;
+                }
+                else if (totalOrdersGenerated < 4)
+                {
+                    warmupBonus = 8f;
+                }
+
+                float finalWaitTime = baseInterval + backpressure + warmupBonus;
+                yield return new WaitForSeconds(finalWaitTime);
+            }
+        }
+
+        private ProductItem GetProductForNewOrder()
+        {
+            // Solo generar pedidos de productos/proyectos que el jugador haya publicado en la tienda
+            if (storeProducts != null && storeProducts.Count > 0)
+            {
+                return storeProducts[UnityEngine.Random.Range(0, storeProducts.Count)];
+            }
+
+            // Si aún no se ha publicado ningún proyecto/producto en la tienda, no generar pedidos
+            return null;
+        }
+
+        public void PlayOrderNotificationSound()
+        {
+            if (audioSource == null)
+            {
+                audioSource = GetComponent<AudioSource>();
+                if (audioSource == null)
+                {
+                    audioSource = gameObject.AddComponent<AudioSource>();
+                    audioSource.playOnAwake = false;
+                    audioSource.spatialBlend = 0.2f;
+                }
+            }
+
+            AudioClip clipToPlay = vibrationSoundClip;
+            if (clipToPlay == null)
+            {
+                if (cachedOrderVibration == null)
+                {
+                    cachedOrderVibration = GenerateOrderVibrationClip();
+                }
+                clipToPlay = cachedOrderVibration;
+            }
+
+            if (audioSource != null && clipToPlay != null)
+            {
+                audioSource.PlayOneShot(clipToPlay, 1.0f);
+            }
+        }
+
+        private static AudioClip GenerateOrderVibrationClip()
+        {
+            int sampleRate = 44100;
+            float duration = 0.50f;
+            int numSamples = (int)(sampleRate * duration);
+            float[] samples = new float[numSamples];
+
+            float pulse1Start = 0.0f, pulse1End = 0.18f;
+            float pulse2Start = 0.25f, pulse2End = 0.46f;
+            float freq = 145f;
+
+            for (int i = 0; i < numSamples; i++)
+            {
+                float t = (float)i / sampleRate;
+                float amp = 0f;
+
+                if (t >= pulse1Start && t <= pulse1End)
+                {
+                    float pT = (t - pulse1Start) / (pulse1End - pulse1Start);
+                    amp = Mathf.Sin(pT * Mathf.PI);
+                }
+                else if (t >= pulse2Start && t <= pulse2End)
+                {
+                    float pT = (t - pulse2Start) / (pulse2End - pulse2Start);
+                    amp = Mathf.Sin(pT * Mathf.PI);
+                }
+
+                if (amp > 0f)
+                {
+                    float f1 = Mathf.Sin(2f * Mathf.PI * freq * t);
+                    float f2 = Mathf.Sin(2f * Mathf.PI * (freq * 2f) * t) * 0.45f;
+                    float f3 = Mathf.Sin(2f * Mathf.PI * (freq * 3f) * t) * 0.25f;
+                    float f4 = Mathf.Sin(2f * Mathf.PI * (freq * 4f) * t) * 0.12f;
+                    float noise = (Mathf.PerlinNoise(t * 1200f, 0f) * 2f - 1f) * 0.18f;
+
+                    float raw = (f1 + f2 + f3 + f4 + noise) * amp;
+                    samples[i] = Mathf.Clamp(raw * 1.35f, -1f, 1f) * 0.90f;
+                }
+                else
+                {
+                    samples[i] = 0f;
+                }
+            }
+
+            AudioClip clip = AudioClip.Create("TabletVibrationSound", numSamples, 1, sampleRate, false);
+            clip.SetData(samples, 0);
+            return clip;
         }
 
         public void UpdateOrderProgress(OrderItem order)

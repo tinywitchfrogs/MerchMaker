@@ -29,7 +29,7 @@ namespace ArtSimulator
             EnsureReferences();
             WireAllButtons();
 
-            var tm = GetComponent<TabletManager>() ?? TabletManager.Instance;
+            var tm = GetComponent<TabletManager>() != null ? GetComponent<TabletManager>() : TabletManager.Instance;
             if (tm != null)
             {
                 tm.OnScreenChanged -= UpdateActiveScreen;
@@ -45,7 +45,7 @@ namespace ArtSimulator
             EnsureReferences();
             WireAllButtons();
 
-            var tm = GetComponent<TabletManager>() ?? TabletManager.Instance;
+            var tm = GetComponent<TabletManager>() != null ? GetComponent<TabletManager>() : TabletManager.Instance;
             if (tm != null)
             {
                 tm.OnScreenChanged -= UpdateActiveScreen;
@@ -58,7 +58,7 @@ namespace ArtSimulator
 
         private void OnDestroy()
         {
-            var tm = GetComponent<TabletManager>() ?? TabletManager.Instance;
+            var tm = GetComponent<TabletManager>() != null ? GetComponent<TabletManager>() : TabletManager.Instance;
             if (tm != null)
             {
                 tm.OnScreenChanged -= UpdateActiveScreen;
@@ -72,7 +72,7 @@ namespace ArtSimulator
             {
                 EnsureReferences();
                 WireAllButtons();
-                var tm = GetComponent<TabletManager>() ?? TabletManager.Instance;
+                var tm = GetComponent<TabletManager>() != null ? GetComponent<TabletManager>() : TabletManager.Instance;
                 if (tm != null)
                 {
                     UpdateActiveScreen(tm.CurrentScreen);
@@ -224,27 +224,6 @@ namespace ArtSimulator
                 {
                     var g = imagesScreenPanel.GetComponent<TabletGalleryApp>();
                     if (g != null) g.OnPrintClicked();
-                }
-            });
-
-            // Botones de Cantidad de Copias (Mín 1, Máx 10)
-            SetupButton(canvasObj.transform, "TabletDeviceFrame/ScreenArea/ImagesScreen/PreviewPanel/QuantitySelectorBar/DecQtyButton", "Menos Copias", () =>
-            {
-                if (galleryApp != null) galleryApp.DecreaseQuantity();
-                else if (imagesScreenPanel != null)
-                {
-                    var g = imagesScreenPanel.GetComponent<TabletGalleryApp>();
-                    if (g != null) g.DecreaseQuantity();
-                }
-            });
-
-            SetupButton(canvasObj.transform, "TabletDeviceFrame/ScreenArea/ImagesScreen/PreviewPanel/QuantitySelectorBar/IncQtyButton", "Más Copias", () =>
-            {
-                if (galleryApp != null) galleryApp.IncreaseQuantity();
-                else if (imagesScreenPanel != null)
-                {
-                    var g = imagesScreenPanel.GetComponent<TabletGalleryApp>();
-                    if (g != null) g.IncreaseQuantity();
                 }
             });
 

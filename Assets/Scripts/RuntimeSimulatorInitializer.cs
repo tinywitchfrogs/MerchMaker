@@ -48,7 +48,7 @@ namespace ArtSimulator
 
                 // Asegurar que la pantalla de la tableta empiece oculta
                 TabletManager tm = tabletObj.GetComponent<TabletManager>();
-                if (tm != null && !tm.IsTabletOpen)
+                if (tm != null)
                 {
                     tm.CloseTablet();
                 }

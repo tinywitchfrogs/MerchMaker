@@ -40,6 +40,20 @@ namespace ArtSimulator
         private ArtworkData currentSelectedArtwork;
         private float lastPrintTime = -1f;
 
+        private void OnEnable()
+        {
+            if (TabletManager.Instance != null)
+            {
+                TabletManager.Instance.OnArtworksChanged -= OnScannedArtworksUpdated;
+                TabletManager.Instance.OnArtworksChanged += OnScannedArtworksUpdated;
+                TabletManager.Instance.OnPhotosChanged -= OnPhotosUpdated;
+                TabletManager.Instance.OnPhotosChanged += OnPhotosUpdated;
+            }
+            UpdateQuantityUI();
+            UpdateTabVisuals();
+            RefreshGallery();
+        }
+
         private void Start()
         {
             if (homeButton != null)
@@ -184,11 +198,6 @@ namespace ArtSimulator
             UpdateTabVisuals();
         }
 
-        private void OnEnable()
-        {
-            RefreshGallery();
-        }
-
         public void BindUI(Transform contentContainer, Image previewImage, Text titleText, Button printBtn, Button homeBtn, Text statusText, Text emptyText, Text qtyText = null, Button decBtn = null, Button incBtn = null)
         {
             galleryContentContainer = contentContainer;
@@ -241,8 +250,14 @@ namespace ArtSimulator
             UpdateQuantityUI();
         }
 
+        private float lastQtyChangeTime = -1f;
+
         public void IncreaseQuantity()
         {
+            float now = Time.unscaledTime;
+            if (now - lastQtyChangeTime < 0.20f) return;
+            lastQtyChangeTime = now;
+
             if (printQuantity < 10)
             {
                 printQuantity++;
@@ -252,6 +267,10 @@ namespace ArtSimulator
 
         public void DecreaseQuantity()
         {
+            float now = Time.unscaledTime;
+            if (now - lastQtyChangeTime < 0.20f) return;
+            lastQtyChangeTime = now;
+
             if (printQuantity > 1)
             {
                 printQuantity--;
