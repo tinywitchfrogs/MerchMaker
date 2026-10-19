@@ -32,6 +32,11 @@ namespace ArtSimulator
                 HookEvents();
                 var ctrl = GetComponent<TabletUIController>();
                 if (ctrl != null) ctrl.WireAllButtons();
+
+                if (TabletManager.Instance != null && !TabletManager.Instance.IsTabletOpen)
+                {
+                    canvasObj.SetActive(false);
+                }
                 return;
             }
 
@@ -143,6 +148,11 @@ namespace ArtSimulator
             Rigidbody rb = GetComponent<Rigidbody>();
             if (rb != null) Destroy(rb);
 
+            if (TabletManager.Instance != null && !TabletManager.Instance.IsTabletOpen)
+            {
+                canvasObj.SetActive(false);
+            }
+
             Debug.Log("<color=green>[TabletUIBuilder]</color> ¡Interfaz de Tableta construida y configurada con éxito!");
         }
 
@@ -228,8 +238,8 @@ namespace ArtSimulator
             hlg.childForceExpandWidth = false;
             hlg.childForceExpandHeight = false;
 
-            // 1. Galería de Arte
-            CreateAppIcon(appsContainer.transform, "Galería de Arte", new Color(0.12f, 0.48f, 0.95f), "🖼️", "[1] Ver y Reimprimir", () =>
+            // 1. Galería de Fotos
+            CreateAppIcon(appsContainer.transform, "Galería de Fotos", new Color(0.12f, 0.48f, 0.95f), "🖼️", "[1] Ver e Imprimir Fotos", () =>
             {
                 TabletManager.Instance?.ShowImages();
             });
@@ -490,7 +500,7 @@ namespace ArtSimulator
             SetFullStretch(panel);
 
             // Barra Superior con Botón de Casa
-            GameObject topBar = CreateTopHeaderWithHouse(panel.transform, "🖼️ ILUSTRACIONES ESCANEADAS", out Button homeBtn);
+            GameObject topBar = CreateTopHeaderWithHouse(panel.transform, "📷 GALERÍA DE FOTOS", out Button homeBtn);
 
             // Mitad Izquierda: Vista Previa Ampliada y Botón Imprimir
             GameObject previewPanel = CreateUIElement("PreviewPanel", panel.transform);
@@ -605,8 +615,48 @@ namespace ArtSimulator
             SetFullStretch(incTxt.gameObject);
             incTxt.raycastTarget = false;
 
+            // Barra de Pestañas (🖨️ Escaneos de Impresora vs 📷 Fotos de Cámara)
+            GameObject tabBarObj = CreateUIElement("GalleryTabBar", panel.transform);
+            RectTransform tbRt = tabBarObj.GetComponent<RectTransform>();
+            tbRt.anchorMin = new Vector2(0.51f, 0.79f);
+            tbRt.anchorMax = new Vector2(0.96f, 0.86f);
+            tbRt.offsetMin = Vector2.zero;
+            tbRt.offsetMax = Vector2.zero;
+
+            // Pestaña 1: Escaneos
+            GameObject scansTabObj = CreateUIElement("ScansTab", tabBarObj.transform);
+            RectTransform stTabRt = scansTabObj.GetComponent<RectTransform>();
+            stTabRt.anchorMin = new Vector2(0f, 0f);
+            stTabRt.anchorMax = new Vector2(0.48f, 1f);
+            stTabRt.offsetMin = Vector2.zero;
+            stTabRt.offsetMax = Vector2.zero;
+            Image scansTabBg = scansTabObj.AddComponent<Image>();
+            scansTabBg.color = new Color(0.12f, 0.48f, 0.95f);
+            scansTabBg.raycastTarget = true;
+            Button scansTabBtn = scansTabObj.AddComponent<Button>();
+            scansTabBtn.targetGraphic = scansTabBg;
+            Text scansTabTxt = CreateText("Label", scansTabObj.transform, "🖨️ ESCANEOS", 14, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+            SetFullStretch(scansTabTxt.gameObject);
+            scansTabTxt.raycastTarget = false;
+
+            // Pestaña 2: Fotos
+            GameObject photosTabObj = CreateUIElement("PhotosTab", tabBarObj.transform);
+            RectTransform ptTabRt = photosTabObj.GetComponent<RectTransform>();
+            ptTabRt.anchorMin = new Vector2(0.52f, 0f);
+            ptTabRt.anchorMax = new Vector2(1f, 1f);
+            ptTabRt.offsetMin = Vector2.zero;
+            ptTabRt.offsetMax = Vector2.zero;
+            Image photosTabBg = photosTabObj.AddComponent<Image>();
+            photosTabBg.color = new Color(0.85f, 0.88f, 0.93f);
+            photosTabBg.raycastTarget = true;
+            Button photosTabBtn = photosTabObj.AddComponent<Button>();
+            photosTabBtn.targetGraphic = photosTabBg;
+            Text photosTabTxt = CreateText("Label", photosTabObj.transform, "📷 FOTOS", 14, FontStyle.Bold, new Color(0.20f, 0.25f, 0.35f), TextAnchor.MiddleCenter);
+            SetFullStretch(photosTabTxt.gameObject);
+            photosTabTxt.raycastTarget = false;
+
             // Mitad Derecha: Lista horizontal de miniaturas
-            GameObject scrollObj = CreateHorizontalScrollView("GalleryScroll", panel.transform, new Vector2(0.51f, 0.05f), new Vector2(0.96f, 0.86f), out Transform contentContainer);
+            GameObject scrollObj = CreateHorizontalScrollView("GalleryScroll", panel.transform, new Vector2(0.51f, 0.05f), new Vector2(0.96f, 0.77f), out Transform contentContainer);
 
             // Mensaje vacío
             Text emptyTxt = CreateText("EmptyState", scrollObj.transform, "Pasa un dibujo por la impresora\npara escanearlo y verlo aquí.", 18, FontStyle.Italic, new Color(0.4f, 0.45f, 0.55f), TextAnchor.MiddleCenter);
@@ -622,8 +672,11 @@ namespace ArtSimulator
             stRt.offsetMax = Vector2.zero;
             statusTxt.raycastTarget = false;
 
+            Text topTitleText = topBar.GetComponentInChildren<Text>();
+
             galleryApp = panel.AddComponent<TabletGalleryApp>();
             galleryApp.BindUI(contentContainer, artImg, titleTxt, printBtn, homeBtn, statusTxt, emptyTxt, qtyLabel, decBtn, incBtn);
+            galleryApp.BindTabs(scansTabBtn, photosTabBtn, scansTabBg, photosTabBg, scansTabTxt, photosTabTxt, topTitleText);
 
             TabletGalleryApp localGallery = galleryApp;
             ptTrig.SetAction("Imprimir Copia", () => localGallery?.OnPrintClicked());
@@ -764,7 +817,7 @@ namespace ArtSimulator
             SetFullStretch(xTxt.gameObject);
             xTxt.raycastTarget = false;
 
-            Text photoSub = CreateText("PhotoSub", box.transform, "1. Selecciona la foto que tomaste con la cámara:", 15, FontStyle.Normal, new Color(0.3f, 0.3f, 0.3f), TextAnchor.MiddleLeft);
+            Text photoSub = CreateText("PhotoSub", box.transform, "1. Selecciona una ilustración o fotografía:", 15, FontStyle.Normal, new Color(0.3f, 0.3f, 0.3f), TextAnchor.MiddleLeft);
             RectTransform psRt = photoSub.GetComponent<RectTransform>();
             psRt.anchorMin = new Vector2(0.05f, 0.78f);
             psRt.anchorMax = new Vector2(0.95f, 0.86f);

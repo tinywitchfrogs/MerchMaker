@@ -4,6 +4,12 @@ using UnityEngine.UI;
 
 namespace ArtSimulator
 {
+    public enum GalleryTab
+    {
+        Scans,
+        Photos
+    }
+
     public class TabletGalleryApp : MonoBehaviour
     {
         [Header("Elementos UI")]
@@ -14,6 +20,16 @@ namespace ArtSimulator
         [SerializeField] private Button homeButton;
         [SerializeField] private Text statusMessageText;
         [SerializeField] private Text emptyStateText;
+
+        [Header("Pestañas de Galería")]
+        [SerializeField] private GalleryTab currentTab = GalleryTab.Scans;
+        [SerializeField] private Button scansTabButton;
+        [SerializeField] private Button photosTabButton;
+        [SerializeField] private Image scansTabBg;
+        [SerializeField] private Image photosTabBg;
+        [SerializeField] private Text scansTabText;
+        [SerializeField] private Text photosTabText;
+        [SerializeField] private Text topBarTitleText;
 
         [Header("Selector de Cantidad de Copias (Mín 1, Máx 10)")]
         [SerializeField] private int printQuantity = 1;
@@ -62,12 +78,27 @@ namespace ArtSimulator
                 it.SetAction("Más Copias", IncreaseQuantity);
             }
 
+            if (scansTabButton != null)
+            {
+                TabletButtonTrigger st = scansTabButton.GetComponent<TabletButtonTrigger>() ?? scansTabButton.gameObject.AddComponent<TabletButtonTrigger>();
+                st.SetAction("Ver Escaneos", () => SwitchTab(GalleryTab.Scans));
+            }
+
+            if (photosTabButton != null)
+            {
+                TabletButtonTrigger pt = photosTabButton.GetComponent<TabletButtonTrigger>() ?? photosTabButton.gameObject.AddComponent<TabletButtonTrigger>();
+                pt.SetAction("Ver Fotos", () => SwitchTab(GalleryTab.Photos));
+            }
+
             UpdateQuantityUI();
+            UpdateTabVisuals();
 
             if (TabletManager.Instance != null)
             {
-                TabletManager.Instance.OnArtworksChanged -= RefreshGallery;
-                TabletManager.Instance.OnArtworksChanged += RefreshGallery;
+                TabletManager.Instance.OnArtworksChanged -= OnScannedArtworksUpdated;
+                TabletManager.Instance.OnArtworksChanged += OnScannedArtworksUpdated;
+                TabletManager.Instance.OnPhotosChanged -= OnPhotosUpdated;
+                TabletManager.Instance.OnPhotosChanged += OnPhotosUpdated;
             }
 
             RefreshGallery();
@@ -77,8 +108,80 @@ namespace ArtSimulator
         {
             if (TabletManager.Instance != null)
             {
-                TabletManager.Instance.OnArtworksChanged -= RefreshGallery;
+                TabletManager.Instance.OnArtworksChanged -= OnScannedArtworksUpdated;
+                TabletManager.Instance.OnPhotosChanged -= OnPhotosUpdated;
             }
+        }
+
+        private void OnScannedArtworksUpdated()
+        {
+            currentTab = GalleryTab.Scans;
+            UpdateTabVisuals();
+            RefreshGallery();
+        }
+
+        private void OnPhotosUpdated()
+        {
+            currentTab = GalleryTab.Photos;
+            UpdateTabVisuals();
+            RefreshGallery();
+        }
+
+        public void SwitchTab(GalleryTab tab)
+        {
+            currentTab = tab;
+            UpdateTabVisuals();
+            RefreshGallery();
+        }
+
+        public void UpdateTabVisuals()
+        {
+            Color activeBg = new Color(0.12f, 0.48f, 0.95f);
+            Color inactiveBg = new Color(0.85f, 0.88f, 0.93f);
+            Color activeText = Color.white;
+            Color inactiveText = new Color(0.20f, 0.25f, 0.35f);
+
+            if (scansTabBg != null) scansTabBg.color = (currentTab == GalleryTab.Scans) ? activeBg : inactiveBg;
+            if (photosTabBg != null) photosTabBg.color = (currentTab == GalleryTab.Photos) ? activeBg : inactiveBg;
+
+            if (scansTabText != null) scansTabText.color = (currentTab == GalleryTab.Scans) ? activeText : inactiveText;
+            if (photosTabText != null) photosTabText.color = (currentTab == GalleryTab.Photos) ? activeText : inactiveText;
+
+            if (topBarTitleText != null)
+            {
+                topBarTitleText.text = (currentTab == GalleryTab.Scans) 
+                    ? "🖨️ DIBUJOS ESCANEADOS" 
+                    : "📷 FOTOS DE CÁMARA";
+            }
+        }
+
+        public void BindTabs(Button scansBtn, Button photosBtn, Image sBg, Image pBg, Text sTxt, Text pTxt, Text topTitle)
+        {
+            scansTabButton = scansBtn;
+            photosTabButton = photosBtn;
+            scansTabBg = sBg;
+            photosTabBg = pBg;
+            scansTabText = sTxt;
+            photosTabText = pTxt;
+            topBarTitleText = topTitle;
+
+            if (scansTabButton != null)
+            {
+                scansTabButton.onClick.RemoveAllListeners();
+                scansTabButton.onClick.AddListener(() => SwitchTab(GalleryTab.Scans));
+                var t = scansTabButton.GetComponent<TabletButtonTrigger>() ?? scansTabButton.gameObject.AddComponent<TabletButtonTrigger>();
+                t.SetAction("Ver Escaneos", () => SwitchTab(GalleryTab.Scans));
+            }
+
+            if (photosTabButton != null)
+            {
+                photosTabButton.onClick.RemoveAllListeners();
+                photosTabButton.onClick.AddListener(() => SwitchTab(GalleryTab.Photos));
+                var t = photosTabButton.GetComponent<TabletButtonTrigger>() ?? photosTabButton.gameObject.AddComponent<TabletButtonTrigger>();
+                t.SetAction("Ver Fotos", () => SwitchTab(GalleryTab.Photos));
+            }
+
+            UpdateTabVisuals();
         }
 
         private void OnEnable()
@@ -177,19 +280,23 @@ namespace ArtSimulator
         {
             if (TabletManager.Instance == null || galleryContentContainer == null) return;
 
-            IReadOnlyList<ArtworkData> artworks = TabletManager.Instance.ScannedArtworks;
+            IReadOnlyList<ArtworkData> artworks = (currentTab == GalleryTab.Scans)
+                ? TabletManager.Instance.ScannedArtworks
+                : TabletManager.Instance.PhotoArtworks;
 
             // Limpiar lista anterior
             foreach (Transform child in galleryContentContainer)
             {
-                Destroy(child.gameObject);
+                SafeDestroy(child.gameObject);
             }
 
             bool hasArtworks = artworks != null && artworks.Count > 0;
             if (emptyStateText != null)
             {
                 emptyStateText.gameObject.SetActive(!hasArtworks);
-                emptyStateText.text = "📭 Galería Vacía\nEscanea tu dibujo en la impresora física para verlo e imprimir copias aquí.";
+                emptyStateText.text = (currentTab == GalleryTab.Scans)
+                    ? "🖨️ Sin Dibujos Escaneados\nColoca un dibujo sobre la impresora para escanearlo y verlo aquí."
+                    : "📷 Galería Fotográfica Vacía\nToma fotos con la app de Cámara para verlas aquí.";
             }
 
             if (selectedArtworkPreview != null)
@@ -202,7 +309,12 @@ namespace ArtSimulator
             if (!hasArtworks)
             {
                 currentSelectedArtwork = null;
-                if (statusMessageText != null) statusMessageText.text = "No hay ilustraciones escaneadas.";
+                if (statusMessageText != null)
+                {
+                    statusMessageText.text = (currentTab == GalleryTab.Scans)
+                        ? "Coloca un dibujo en la impresora para escanear."
+                        : "No hay fotografías capturadas.";
+                }
                 return;
             }
 
@@ -213,8 +325,25 @@ namespace ArtSimulator
                 CreateThumbnailCard(art);
             }
 
-            // Seleccionar automáticamente la primera si no hay ninguna seleccionada
-            if (currentSelectedArtwork == null && artworks.Count > 0)
+            // Re-vincular la obra seleccionada para reflejar posibles actualizaciones de textura
+            ArtworkData targetArt = null;
+            if (currentSelectedArtwork != null)
+            {
+                for (int i = 0; i < artworks.Count; i++)
+                {
+                    if (artworks[i].id == currentSelectedArtwork.id || artworks[i].title == currentSelectedArtwork.title)
+                    {
+                        targetArt = artworks[i];
+                        break;
+                    }
+                }
+            }
+
+            if (targetArt != null)
+            {
+                SelectArtwork(targetArt);
+            }
+            else if (artworks.Count > 0)
             {
                 SelectArtwork(artworks[0]);
             }
@@ -308,14 +437,23 @@ namespace ArtSimulator
             if (Time.unscaledTime - lastPrintTime < 0.6f) return;
             lastPrintTime = Time.unscaledTime;
 
-            if (currentSelectedArtwork == null && TabletManager.Instance != null && TabletManager.Instance.ScannedArtworks.Count > 0)
+            if (currentSelectedArtwork == null && TabletManager.Instance != null)
             {
-                SelectArtwork(TabletManager.Instance.ScannedArtworks[0]);
+                var list = (currentTab == GalleryTab.Scans) ? TabletManager.Instance.ScannedArtworks : TabletManager.Instance.PhotoArtworks;
+                if (list != null && list.Count > 0)
+                {
+                    SelectArtwork(list[0]);
+                }
             }
 
             if (currentSelectedArtwork == null)
             {
-                if (statusMessageText != null) statusMessageText.text = "Primero escanea el dibujo en la impresora física.";
+                if (statusMessageText != null)
+                {
+                    statusMessageText.text = (currentTab == GalleryTab.Scans)
+                        ? "Primero coloca y escanea un dibujo en la impresora física."
+                        : "Primero toma una fotografía con la app de Cámara.";
+                }
                 return;
             }
 
@@ -336,6 +474,19 @@ namespace ArtSimulator
                 {
                     statusMessageText.text = "⚠️ No se encontró la impresora.";
                 }
+            }
+        }
+
+        private void SafeDestroy(GameObject obj)
+        {
+            if (obj == null) return;
+            if (Application.isPlaying)
+            {
+                Destroy(obj);
+            }
+            else
+            {
+                DestroyImmediate(obj);
             }
         }
     }

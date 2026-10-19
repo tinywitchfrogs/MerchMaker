@@ -18,9 +18,13 @@ namespace ArtSimulator
         }
 
         [Header("Movimiento")]
-        [SerializeField] private float walkSpeed = 5.5f;
-        [SerializeField] private float sprintSpeed = 9.0f;
-        [SerializeField] private float verticalSpeed = 4.0f;
+        [SerializeField] private float walkSpeed = 4.5f;
+        [SerializeField] private float sprintSpeed = 7.0f;
+        [SerializeField] private float jumpHeight = 1.0f;
+        [SerializeField] private float gravity = -18.0f;
+
+        private CharacterController characterController;
+        private float verticalVelocity = 0f;
 
         [Header("Cámara y Ratón")]
         [SerializeField] private float mouseSensitivity = 2.0f;
@@ -28,7 +32,7 @@ namespace ArtSimulator
         [SerializeField] private float maxPitch = 85f;
 
         [Header("Agarre de Objetos")]
-        [SerializeField] private float interactionRange = 2.2f;
+        [SerializeField] private float interactionRange = 3.2f;
         [SerializeField] private Vector3 holdOffset = new Vector3(0.3f, -0.2f, 0.7f);
         [SerializeField] private float carryLerpSpeed = 12f;
 
@@ -74,6 +78,24 @@ namespace ArtSimulator
                 normalPlayerFOV = playerCamera.fieldOfView;
             }
 
+            // Configurar CharacterController para colisiones con paredes y suelo firme
+            characterController = GetComponent<CharacterController>();
+            if (characterController == null)
+            {
+                characterController = gameObject.AddComponent<CharacterController>();
+            }
+            characterController.height = 1.75f;
+            characterController.radius = 0.35f;
+            characterController.center = new Vector3(0f, -0.85f, 0f);
+            characterController.skinWidth = 0.05f;
+            characterController.minMoveDistance = 0f;
+            characterController.stepOffset = 0.3f;
+            characterController.slopeLimit = 45f;
+
+            // Eliminar CapsuleCollider trigger obsoleto si existe
+            CapsuleCollider oldCol = GetComponent<CapsuleCollider>();
+            if (oldCol != null) Destroy(oldCol);
+
             CreateCrosshairUI();
         }
 
@@ -112,7 +134,7 @@ namespace ArtSimulator
 
                     TabletCameraApp camApp = FindAnyObjectByType<TabletCameraApp>();
                     float zoomFactor = camApp != null ? camApp.CurrentZoomFactor : 1.0f;
-                    SetCameraPromptText($"📷 <b>CÁMARA</b>: [WASD] Moverte  •  [Rueda / Q-E] Zoom ({zoomFactor:F1}x)  •  [ESPACIO / Clic] Foto  •  [🏠 / H] Volver");
+                    SetCameraPromptText($"📷 <b>CÁMARA</b>: [WASD] Moverte  •  [Espacio / C] Subir/Bajar  •  [Rueda / Q-E] Zoom ({zoomFactor:F1}x)  •  <b>[F / Enter / Clic]</b> Foto  •  [🏠 / H] Volver");
                     HandleTabletShortcuts();
                     return;
                 }
@@ -252,30 +274,54 @@ namespace ArtSimulator
                 if (kb.sKey.isPressed) inputDir.z -= 1f;
                 if (kb.aKey.isPressed) inputDir.x -= 1f;
                 if (kb.dKey.isPressed) inputDir.x += 1f;
-                if (kb.spaceKey.isPressed) inputDir.y += 1f;
-                if (kb.cKey.isPressed || kb.leftCtrlKey.isPressed) inputDir.y -= 1f;
             }
             bool isSprinting = kb != null && kb.leftShiftKey.isPressed;
+            bool isJumpPressed = kb != null && kb.spaceKey.wasPressedThisFrame;
 #else
             if (Input.GetKey(KeyCode.W)) inputDir.z += 1f;
             if (Input.GetKey(KeyCode.S)) inputDir.z -= 1f;
             if (Input.GetKey(KeyCode.A)) inputDir.x -= 1f;
             if (Input.GetKey(KeyCode.D)) inputDir.x += 1f;
-            if (Input.GetKey(KeyCode.Space)) inputDir.y += 1f;
-            if (Input.GetKey(KeyCode.C) || Input.GetKey(KeyCode.LeftControl)) inputDir.y -= 1f;
             bool isSprinting = Input.GetKey(KeyCode.LeftShift);
+            bool isJumpPressed = Input.GetKeyDown(KeyCode.Space);
 #endif
 
             float currentSpeed = isSprinting ? sprintSpeed : walkSpeed;
 
-            Transform refTransform = (playerCamera != null) ? playerCamera.transform : transform;
-            Vector3 forward = refTransform.forward;
-            Vector3 right = refTransform.right;
+            // Orientación horizontal basada únicamente en el giro de vista (yaw), para no inclinarse hacia el suelo ni volar al mirar arriba
+            Quaternion horizontalRot = Quaternion.Euler(0f, yaw, 0f);
+            Vector3 forward = horizontalRot * Vector3.forward;
+            Vector3 right = horizontalRot * Vector3.right;
 
-            Vector3 move = (forward * inputDir.z + right * inputDir.x).normalized * currentSpeed;
-            move.y = inputDir.y * verticalSpeed;
+            Vector3 moveDir = (forward * inputDir.z + right * inputDir.x).normalized;
+            Vector3 horizontalVelocity = moveDir * currentSpeed;
 
-            transform.position += move * Time.deltaTime;
+            if (characterController != null && characterController.enabled)
+            {
+                if (characterController.isGrounded)
+                {
+                    if (verticalVelocity < 0f)
+                    {
+                        verticalVelocity = -2f; // Mantener los pies pegados al suelo
+                    }
+
+                    if (isJumpPressed)
+                    {
+                        verticalVelocity = Mathf.Sqrt(jumpHeight * -2f * gravity);
+                    }
+                }
+                else
+                {
+                    verticalVelocity += gravity * Time.deltaTime;
+                }
+
+                Vector3 totalVelocity = horizontalVelocity + Vector3.up * verticalVelocity;
+                characterController.Move(totalVelocity * Time.deltaTime);
+            }
+            else
+            {
+                transform.position += horizontalVelocity * Time.deltaTime;
+            }
         }
 
         private void HandleInteractionRaycast()
@@ -300,13 +346,16 @@ namespace ArtSimulator
                 PrinterController targetedPrinter = GetTargetedPrinter(ray);
                 if (targetedPrinter != null)
                 {
-                    SetPromptText("🖨️ <b>Impresora</b> - <b>[Clic Izquierdo]</b> o pulsa <b>[E]</b> para insertar el dibujo y escanear");
+                    ScannableDrawing drawingToInsert = heldObject.GetComponentInChildren<ScannableDrawing>() 
+                        ?? heldObject.GetComponentInParent<ScannableDrawing>();
+                    string drawName = drawingToInsert != null ? drawingToInsert.GetArtworkData().title : "dibujo";
+
+                    SetPromptText($"🖨️ <b>Impresora</b> - <b>[Clic Izquierdo]</b> o <b>[E]</b> para insertar <b>'{drawName}'</b> y escanear");
                     SetReticleColor(Color.cyan);
 
                     if (isInteractPressed)
                     {
-                        ScannableDrawing drawingToInsert = heldObject.GetComponent<ScannableDrawing>();
-                        // Soltar de las manos
+                        if (heldCollider != null) heldCollider.enabled = true;
                         heldObject = null;
                         heldRigidbody = null;
                         heldCollider = null;
@@ -315,6 +364,24 @@ namespace ArtSimulator
                         {
                             targetedPrinter.InsertDrawing(drawingToInsert);
                         }
+                    }
+                    return;
+                }
+
+                SendProduct targetedSendBox = GetTargetedSendZone(ray);
+                if (targetedSendBox != null)
+                {
+                    SetPromptText("📦 <b>Caja de Envíos</b> - <b>[Clic Izquierdo]</b> o pulsa <b>[E]</b> para entregar al pedido");
+                    SetReticleColor(Color.green);
+
+                    if (isInteractPressed)
+                    {
+                        GameObject objToDeliver = heldObject.gameObject;
+                        heldObject = null;
+                        heldRigidbody = null;
+                        heldCollider = null;
+
+                        targetedSendBox.ProcessDeliveredObject(objToDeliver);
                     }
                     return;
                 }
@@ -329,44 +396,86 @@ namespace ArtSimulator
                 return;
             }
 
-            // 2. Comprobar si apuntamos a la impresora con un dibujo dentro para retirarlo
-            PrinterController printer = GetTargetedPrinter(ray);
-            if (printer != null && printer.HasDrawingInside)
-            {
-                SetPromptText("🖨️ <b>Impresora</b> - <b>[Clic Izquierdo]</b> o pulsa <b>[E]</b> para retirar el dibujo escaneado");
-                SetReticleColor(Color.green);
+            // 2. Detección de dibujos (ScannableDrawing) en la mira (directo o por aproximación)
+            ScannableDrawing targetedDrawing = null;
 
-                if (isInteractPressed)
+            // Primero: Raycast directo y preciso al centro de la mira
+            RaycastHit directHit;
+            if (Physics.Raycast(ray, out directHit, interactionRange, ~0, QueryTriggerInteraction.Collide))
+            {
+                targetedDrawing = directHit.collider.GetComponentInParent<ScannableDrawing>();
+            }
+
+            // Segundo: Si el rayo directo no dio de lleno, usar un SphereCast estrecho
+            if (targetedDrawing == null)
+            {
+                RaycastHit[] hits = Physics.SphereCastAll(ray, 0.15f, interactionRange, ~0, QueryTriggerInteraction.Collide);
+                float closestDist = float.MaxValue;
+                for (int i = 0; i < hits.Length; i++)
                 {
-                    ScannableDrawing retrieved = printer.RetrieveDrawing();
-                    if (retrieved != null)
+                    ScannableDrawing d = hits[i].collider.GetComponentInParent<ScannableDrawing>();
+                    if (d != null && hits[i].distance < closestDist)
                     {
-                        PickupObject(retrieved.transform);
+                        closestDist = hits[i].distance;
+                        targetedDrawing = d;
                     }
                 }
-                return;
             }
 
-            // 2. Priorizar detección de dibujos (ScannableDrawing) en la mira usando SphereCast y RaycastAll
-            ScannableDrawing targetedDrawing = null;
-            RaycastHit[] hits = Physics.SphereCastAll(ray, 0.25f, interactionRange);
-            float closestDist = float.MaxValue;
+            PrinterController printer = GetTargetedPrinter(ray);
 
-            for (int i = 0; i < hits.Length; i++)
-            {
-                ScannableDrawing d = hits[i].collider.GetComponentInParent<ScannableDrawing>();
-                if (d != null && hits[i].distance < closestDist)
-                {
-                    closestDist = hits[i].distance;
-                    targetedDrawing = d;
-                }
-            }
-
+            // Si estamos apuntando directamente a un dibujo (copia u original)
             if (targetedDrawing != null)
             {
-                DrawingCanvas canvas = targetedDrawing.GetComponent<DrawingCanvas>();
-                string suffix = targetedDrawing.IsOriginal ? " <color=#60A5FA>(Original)</color>" : " <color=#FBBF24>(Copia)</color>";
+                // CASO A: Es el dibujo original que está insertado en el escáner de la impresora
+                if (printer != null && printer.HasDrawingInside && targetedDrawing == printer.CurrentInsertedDrawing)
+                {
+                    string artTitle = targetedDrawing.GetArtworkData().title;
+                    SetPromptText($"🖨️ <b>[Clic / E]</b> Retirar '{artTitle}'  •  📑 <b>[R / Clic Der]</b> Imprimir copia");
+                    SetReticleColor(Color.cyan);
 
+                    bool isPrintKey = false;
+#if ENABLE_INPUT_SYSTEM
+                    var mouseDev = UnityEngine.InputSystem.Mouse.current;
+                    if (kb != null && (kb.rKey.wasPressedThisFrame || kb.spaceKey.wasPressedThisFrame)) isPrintKey = true;
+                    if (mouseDev != null && mouseDev.rightButton.wasPressedThisFrame) isPrintKey = true;
+#else
+                    if (Input.GetKeyDown(KeyCode.R) || Input.GetKeyDown(KeyCode.Space) || Input.GetMouseButtonDown(1)) isPrintKey = true;
+#endif
+
+                    if (isPrintKey)
+                    {
+                        printer.PrintArtwork(targetedDrawing.GetArtworkData());
+                        SetPromptText($"✓ ¡Imprimiendo copia física de '{artTitle}'! Revisa la bandeja.");
+                        return;
+                    }
+
+                    if (isInteractPressed)
+                    {
+                        ScannableDrawing retrieved = printer.RetrieveDrawing();
+                        if (retrieved != null)
+                        {
+                            PickupObject(retrieved.transform);
+                        }
+                    }
+                    return;
+                }
+
+                // CASO B: Es una copia impresa (por ejemplo reposando en la bandeja de salida)
+                if (!targetedDrawing.IsOriginal)
+                {
+                    SetPromptText($"🖐️ <b>[Clic / E]</b> Tomar copia de <b>'{targetedDrawing.GetArtworkData().title}'</b>");
+                    SetReticleColor(Color.yellow);
+
+                    if (isInteractPressed)
+                    {
+                        PickupObject(targetedDrawing.transform);
+                    }
+                    return;
+                }
+
+                // CASO C: Es un dibujo original sobre la mesa (fuera del escáner)
+                DrawingCanvas canvas = targetedDrawing.GetComponent<DrawingCanvas>();
                 bool isDrawPressed = false;
 #if ENABLE_INPUT_SYSTEM
                 if (kb != null && kb.fKey.wasPressedThisFrame) isDrawPressed = true;
@@ -377,24 +486,59 @@ namespace ArtSimulator
 
                 if (canvas != null)
                 {
-                    SetPromptText($"🖐️ <b>[Clic / E]</b> Tomar  •  🖌️ <b>[F / Clic Der]</b> Dibujar en {targetedDrawing.GetArtworkData().title}{suffix}");
+                    SetPromptText($"🖐️ <b>[Clic / E]</b> Tomar  •  🖌️ <b>[F / Clic Der]</b> Dibujar en {targetedDrawing.GetArtworkData().title} <color=#60A5FA>(Original)</color>");
+                    SetReticleColor(Color.cyan);
+
+                    if (isDrawPressed)
+                    {
+                        EnterDrawingMode(canvas);
+                        return;
+                    }
                 }
                 else
                 {
-                    SetPromptText($"🖐️ <b>[Clic Izquierdo]</b> o <b>[E]</b> para tomar {targetedDrawing.GetArtworkData().title}{suffix}");
-                }
-
-                SetReticleColor(targetedDrawing.IsOriginal ? Color.cyan : Color.yellow);
-
-                if (canvas != null && isDrawPressed)
-                {
-                    EnterDrawingMode(canvas);
-                    return;
+                    SetPromptText($"🖐️ <b>[Clic / E]</b> Tomar {targetedDrawing.GetArtworkData().title} <color=#60A5FA>(Original)</color>");
+                    SetReticleColor(Color.cyan);
                 }
 
                 if (isInteractPressed)
                 {
                     PickupObject(targetedDrawing.transform);
+                }
+                return;
+            }
+
+            // 3. Si no apuntamos directamente a un dibujo, pero apuntamos a la impresora con un dibujo adentro
+            if (printer != null && printer.HasDrawingInside)
+            {
+                ScannableDrawing insideDrawing = printer.CurrentInsertedDrawing;
+                string artTitle = insideDrawing != null ? insideDrawing.GetArtworkData().title : "dibujo";
+                SetPromptText($"🖨️ <b>[Clic / E]</b> Retirar '{artTitle}'  •  📑 <b>[R / Clic Der]</b> Imprimir copia");
+                SetReticleColor(Color.green);
+
+                bool isPrintKey = false;
+#if ENABLE_INPUT_SYSTEM
+                var mouseDev = UnityEngine.InputSystem.Mouse.current;
+                if (kb != null && (kb.rKey.wasPressedThisFrame || kb.spaceKey.wasPressedThisFrame)) isPrintKey = true;
+                if (mouseDev != null && mouseDev.rightButton.wasPressedThisFrame) isPrintKey = true;
+#else
+                if (Input.GetKeyDown(KeyCode.R) || Input.GetKeyDown(KeyCode.Space) || Input.GetMouseButtonDown(1)) isPrintKey = true;
+#endif
+
+                if (isPrintKey && insideDrawing != null)
+                {
+                    printer.PrintArtwork(insideDrawing.GetArtworkData());
+                    SetPromptText($"✓ ¡Imprimiendo copia física de '{artTitle}'! Revisa la bandeja.");
+                    return;
+                }
+
+                if (isInteractPressed)
+                {
+                    ScannableDrawing retrieved = printer.RetrieveDrawing();
+                    if (retrieved != null)
+                    {
+                        PickupObject(retrieved.transform);
+                    }
                 }
                 return;
             }
@@ -443,9 +587,51 @@ namespace ArtSimulator
                 return;
             }
 
+            // 4. Comprobar si apuntamos a la pila de hojas de papel para sacar un nuevo dibujo original
+            PaperDispenser dispenser = GetTargetedDispenser(ray);
+            if (dispenser != null)
+            {
+                SetPromptText("📄 <b>Pila de Hojas</b> - <b>[Clic Izquierdo]</b> o <b>[E]</b> para tomar una hoja limpia");
+                SetReticleColor(Color.cyan);
+
+                if (isInteractPressed)
+                {
+                    ScannableDrawing newPaper = dispenser.DispenseNewPaper();
+                    if (newPaper != null && heldObject == null)
+                    {
+                        PickupObject(newPaper.transform);
+                        SetPromptText($"🖐️ Llevando {newPaper.GetArtworkData().title} - <b>[Clic / E]</b> para colocar sobre la mesa");
+                    }
+                }
+                return;
+            }
+
             // Sin interacción en la mira
             SetPromptText("");
             SetReticleColor(Color.white);
+        }
+
+        private PaperDispenser GetTargetedDispenser(Ray ray)
+        {
+            RaycastHit hit;
+            if (Physics.Raycast(ray, out hit, interactionRange, ~0, QueryTriggerInteraction.Collide))
+            {
+                var pd = hit.collider.GetComponentInParent<PaperDispenser>();
+                if (pd != null) return pd;
+                if (hit.collider.name.ToLower().Contains("pila") || hit.collider.name.ToLower().Contains("dispenser") || hit.collider.name.ToLower().Contains("hojas"))
+                    return PaperDispenser.Instance;
+            }
+
+            RaycastHit[] hits = Physics.SphereCastAll(ray, 0.25f, interactionRange, ~0, QueryTriggerInteraction.Collide);
+            for (int i = 0; i < hits.Length; i++)
+            {
+                var pd = hits[i].collider.GetComponentInParent<PaperDispenser>();
+                if (pd != null) return pd;
+                if (hits[i].collider.name.ToLower().Contains("pila") || hits[i].collider.name.ToLower().Contains("dispenser") || hits[i].collider.name.ToLower().Contains("hojas"))
+                    return PaperDispenser.Instance;
+            }
+
+            return null;
         }
 
         private PrinterController GetTargetedPrinter(Ray ray)
@@ -453,19 +639,42 @@ namespace ArtSimulator
             RaycastHit hit;
             if (Physics.Raycast(ray, out hit, interactionRange, ~0, QueryTriggerInteraction.Collide))
             {
-                var pc = hit.collider.GetComponentInParent<PrinterController>();
+                var pc = hit.collider.GetComponentInParent<PrinterController>() ?? hit.collider.GetComponentInChildren<PrinterController>();
                 if (pc != null) return pc;
-                if (hit.collider.name.ToLower().Contains("impresora"))
+                if (hit.collider.name.ToLower().Contains("impresora") || hit.collider.name.ToLower().Contains("printer"))
                     return PrinterController.Instance;
+            }
+
+            RaycastHit[] hits = Physics.SphereCastAll(ray, 0.5f, interactionRange, ~0, QueryTriggerInteraction.Collide);
+            for (int i = 0; i < hits.Length; i++)
+            {
+                var pc = hits[i].collider.GetComponentInParent<PrinterController>() ?? hits[i].collider.GetComponentInChildren<PrinterController>();
+                if (pc != null) return pc;
+                if (hits[i].collider.name.ToLower().Contains("impresora") || hits[i].collider.name.ToLower().Contains("printer"))
+                    return PrinterController.Instance;
+            }
+
+            return null;
+        }
+
+        private SendProduct GetTargetedSendZone(Ray ray)
+        {
+            RaycastHit hit;
+            if (Physics.Raycast(ray, out hit, interactionRange, ~0, QueryTriggerInteraction.Collide))
+            {
+                var sp = hit.collider.GetComponentInParent<SendProduct>();
+                if (sp != null) return sp;
+                if (hit.collider.name.ToLower().Contains("envio") || hit.collider.name.ToLower().Contains("caja"))
+                    return SendProduct.Instance;
             }
 
             RaycastHit[] hits = Physics.SphereCastAll(ray, 0.35f, interactionRange, ~0, QueryTriggerInteraction.Collide);
             for (int i = 0; i < hits.Length; i++)
             {
-                var pc = hits[i].collider.GetComponentInParent<PrinterController>();
-                if (pc != null) return pc;
-                if (hits[i].collider.name.ToLower().Contains("impresora"))
-                    return PrinterController.Instance;
+                var sp = hits[i].collider.GetComponentInParent<SendProduct>();
+                if (sp != null) return sp;
+                if (hits[i].collider.name.ToLower().Contains("envio") || hits[i].collider.name.ToLower().Contains("caja"))
+                    return SendProduct.Instance;
             }
 
             return null;
@@ -672,9 +881,43 @@ namespace ArtSimulator
             }
         }
 
+        public bool IsHoldingObject(Transform obj)
+        {
+            if (heldObject == null || obj == null) return false;
+            return heldObject == obj || heldObject.IsChildOf(obj) || obj.IsChildOf(heldObject);
+        }
+
+        public void ReleaseDeliveredObject(Transform obj)
+        {
+            if (heldObject != null && (heldObject == obj || heldObject.IsChildOf(obj) || obj.IsChildOf(heldObject)))
+            {
+                heldObject = null;
+                heldRigidbody = null;
+                heldCollider = null;
+                SetPromptText("");
+            }
+        }
+
         private void DropHeldObject()
         {
             if (heldObject == null) return;
+
+            // Si soltamos el dibujo apuntando a la impresora, insertarlo en el escáner
+            PrinterController printerUnderRay = GetTargetedPrinter(new Ray(playerCamera.transform.position, playerCamera.transform.forward));
+            if (printerUnderRay != null)
+            {
+                ScannableDrawing sc = heldObject.GetComponentInChildren<ScannableDrawing>() 
+                    ?? heldObject.GetComponentInParent<ScannableDrawing>();
+                if (sc != null)
+                {
+                    if (heldCollider != null) heldCollider.enabled = true;
+                    heldObject = null;
+                    heldRigidbody = null;
+                    heldCollider = null;
+                    printerUnderRay.InsertDrawing(sc);
+                    return;
+                }
+            }
 
             // Detectar la superficie apuntada (mesa, impresora, suelo) para apoyar el dibujo
             RaycastHit hit;

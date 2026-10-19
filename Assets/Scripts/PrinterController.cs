@@ -56,19 +56,23 @@ namespace ArtSimulator
 
         public Vector3 GetPrinterCenter()
         {
-            Transform modelChild = transform.Find("Impresora_Model");
-            if (modelChild != null)
-            {
-                // El cristal superior del escáner se sitúa sobre el cuerpo de la impresora
-                return modelChild.position + Vector3.up * 0.28f;
-            }
-            return transform.position;
+            return transform.position + transform.up * 0.25f;
+        }
+
+        public Vector3 GetPaperSlotPosition()
+        {
+            // Ranura interior frontal de donde sale la hoja impresa
+            return transform.position + transform.right * 0.17f + transform.up * (-0.038f) + transform.forward * (-0.031f);
+        }
+
+        public Vector3 GetPaperTrayPosition()
+        {
+            // Bandeja exterior frontal donde reposan las copias impresas
+            return transform.position + transform.right * 0.33f + transform.up * (-0.093f) + transform.forward * (-0.031f);
         }
 
         private void SetupPrinterPositions()
         {
-            Transform modelChild = transform.Find("Impresora_Model");
-
             // Configurar punto de salida de papel alineado con la bandeja frontal
             if (paperSpawnPoint == null)
             {
@@ -85,19 +89,21 @@ namespace ArtSimulator
                 }
             }
 
-            if (modelChild != null && paperSpawnPoint != null)
+            if (paperSpawnPoint != null)
             {
-                paperSpawnPoint.position = modelChild.position + modelChild.forward * 0.25f + Vector3.up * 0.15f;
-                paperSpawnPoint.rotation = modelChild.rotation;
+                paperSpawnPoint.position = GetPaperTrayPosition();
+                paperSpawnPoint.rotation = Quaternion.Euler(0, 90, 0);
             }
 
-            // Ajustar el trigger BoxCollider exactamente sobre el cristal superior del escáner
+            // Ajustar el trigger BoxCollider para que cubra ÚNICAMENTE el cristal superior del escáner
+            // y no interfiera con la bandeja frontal inferior de salida de copias
             BoxCollider bc = GetComponent<BoxCollider>();
-            if (bc != null && modelChild != null)
+            if (bc != null)
             {
                 bc.isTrigger = true;
-                bc.center = modelChild.localPosition + Vector3.up * 1.6f;
-                bc.size = new Vector3(3.0f, 1.6f, 2.4f);
+                // En espacio local de la impresora (escala ~0.1465):
+                bc.center = new Vector3(0f, 1.5f, 0f);
+                bc.size = new Vector3(4.8f, 3.5f, 4.8f);
             }
         }
 
@@ -108,13 +114,8 @@ namespace ArtSimulator
 
         public Vector3 GetScannerBedPosition()
         {
-            Transform modelChild = transform.Find("Impresora_Model");
-            if (modelChild != null)
-            {
-                // Superficie superior plana del escáner
-                return modelChild.position + Vector3.up * 0.28f;
-            }
-            return transform.position + Vector3.up * 0.28f;
+            // Superficie superior plana del escáner
+            return transform.position + transform.up * 0.252f;
         }
 
         /// <summary>
@@ -178,14 +179,34 @@ namespace ArtSimulator
         {
             if (currentInsertedDrawing != null) return;
 
-            ScannableDrawing drawing = other.GetComponent<ScannableDrawing>();
-            if (drawing == null)
-            {
-                drawing = other.GetComponentInParent<ScannableDrawing>();
-            }
+            ScannableDrawing drawing = other.GetComponent<ScannableDrawing>()
+                ?? other.GetComponentInParent<ScannableDrawing>()
+                ?? other.GetComponentInChildren<ScannableDrawing>();
 
             if (drawing != null)
             {
+                if (FirstPersonPlayerController.Instance != null && FirstPersonPlayerController.Instance.IsHoldingObject(drawing.transform))
+                {
+                    FirstPersonPlayerController.Instance.ReleaseDeliveredObject(drawing.transform);
+                }
+                InsertDrawing(drawing);
+            }
+        }
+
+        private void OnCollisionEnter(Collision collision)
+        {
+            if (currentInsertedDrawing != null) return;
+
+            ScannableDrawing drawing = collision.collider.GetComponent<ScannableDrawing>()
+                ?? collision.collider.GetComponentInParent<ScannableDrawing>()
+                ?? collision.collider.GetComponentInChildren<ScannableDrawing>();
+
+            if (drawing != null)
+            {
+                if (FirstPersonPlayerController.Instance != null && FirstPersonPlayerController.Instance.IsHoldingObject(drawing.transform))
+                {
+                    FirstPersonPlayerController.Instance.ReleaseDeliveredObject(drawing.transform);
+                }
                 InsertDrawing(drawing);
             }
         }
@@ -241,19 +262,20 @@ namespace ArtSimulator
 
             // Contar copias existentes en la bandeja para apilar sutilmente en Y (evita solapamiento z-fighting)
             int existingCopies = 0;
+            Vector3 baseTrayPos = GetPaperTrayPosition();
             var currentCopies = FindObjectsByType<ScannableDrawing>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
             for (int i = 0; i < currentCopies.Length; i++)
             {
-                if (!currentCopies[i].IsOriginal && Vector3.Distance(currentCopies[i].transform.position, new Vector3(9.02f, 0.335f, -6.50f)) < 0.4f)
+                if (!currentCopies[i].IsOriginal && Vector3.Distance(currentCopies[i].transform.position, baseTrayPos) < 0.35f)
                 {
                     existingCopies++;
                 }
             }
 
-            // Ranura frontal de salida de la impresora (reposa sobre la bandeja de la impresora)
-            float stackYOffset = existingCopies * 0.005f;
-            Vector3 slotPos = new Vector3(9.18f, 0.335f + stackYOffset, -6.50f);
-            Vector3 trayFinalPos = new Vector3(9.02f, 0.335f + stackYOffset, -6.50f);
+            // Ranura frontal de salida de la impresora y posición final en la bandeja
+            float stackYOffset = existingCopies * 0.004f;
+            Vector3 slotPos = GetPaperSlotPosition() + Vector3.up * stackYOffset;
+            Vector3 trayFinalPos = baseTrayPos + Vector3.up * stackYOffset;
             Quaternion spawnRot = Quaternion.Euler(0, 90, 0);
 
             GameObject newPaper;
@@ -292,11 +314,11 @@ namespace ArtSimulator
                 newPaper.transform.localScale = origDrawing.transform.localScale;
             }
 
-            // Si la plantilla clonada tenía DrawingCanvas, removerlo para que la copia impresa mantenga su arte
+            // Si la plantilla clonada tenía DrawingCanvas, removerlo inmediatamente para que no sobrescriba la textura
             DrawingCanvas copyCanvas = newPaper.GetComponent<DrawingCanvas>();
             if (copyCanvas != null)
             {
-                Destroy(copyCanvas);
+                DestroyImmediate(copyCanvas);
             }
 
             // Asegurar componente ScannableDrawing y aplicarle el Aura Amarilla de copia
@@ -306,7 +328,18 @@ namespace ArtSimulator
                 scannable = newPaper.AddComponent<ScannableDrawing>();
             }
 
-            ArtworkData copyData = new ArtworkData($"Copia - {artwork.title}", artwork.texture);
+            // Aplicar explícitamente la textura al material instanciado de la copia física
+            Texture2D copyTexture = artwork != null ? artwork.texture : null;
+            Renderer r = newPaper.GetComponent<Renderer>();
+            if (r != null && copyTexture != null)
+            {
+                Material copyMat = new Material(r.sharedMaterial);
+                if (copyMat.HasProperty("_BaseMap")) copyMat.SetTexture("_BaseMap", copyTexture);
+                if (copyMat.HasProperty("_MainTex")) copyMat.SetTexture("_MainTex", copyTexture);
+                r.material = copyMat;
+            }
+
+            ArtworkData copyData = new ArtworkData($"Copia - {artwork.title}", copyTexture);
             scannable.SetArtwork(copyData);
             scannable.SetIsOriginal(false); // AURA AMARILLA PARA LA COPIA
 

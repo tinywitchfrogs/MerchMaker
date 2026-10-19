@@ -146,19 +146,33 @@ namespace ArtSimulator
 
         #region Tienda (Productos)
 
+        private void SafeDestroy(GameObject obj)
+        {
+            if (obj == null) return;
+            if (Application.isPlaying)
+                Destroy(obj);
+            else
+                DestroyImmediate(obj);
+        }
+
         public void RefreshStoreProducts()
         {
             if (TabletManager.Instance == null || storeContentContainer == null) return;
 
+            var toDestroy = new List<GameObject>();
             foreach (Transform child in storeContentContainer)
             {
-                Destroy(child.gameObject);
+                toDestroy.Add(child.gameObject);
+            }
+            for (int i = 0; i < toDestroy.Count; i++)
+            {
+                SafeDestroy(toDestroy[i]);
             }
 
             IReadOnlyList<ProductItem> products = TabletManager.Instance.StoreProducts;
 
             // Renderizar tarjetas de productos existentes
-            if (products != null)
+            if (products != null && products.Count > 0)
             {
                 for (int i = 0; i < products.Count; i++)
                 {
@@ -166,6 +180,21 @@ namespace ArtSimulator
                     GameObject card = CreateProductCard(prod);
                     card.transform.SetParent(storeContentContainer, false);
                 }
+            }
+            else
+            {
+                // Aviso informativo cuando la tienda aún no tiene productos
+                GameObject emptyCard = new GameObject("EmptyStoreNotice", typeof(RectTransform), typeof(Text));
+                emptyCard.transform.SetParent(storeContentContainer, false);
+                RectTransform ert = emptyCard.GetComponent<RectTransform>();
+                ert.sizeDelta = new Vector2(250, 100);
+
+                Text et = emptyCard.GetComponent<Text>();
+                et.text = "¡No hay productos a la venta todavía!\n\nToca el botón '+' a la derecha para elegir tu ilustración o foto, fijar el precio y publicarla.";
+                et.alignment = TextAnchor.MiddleCenter;
+                et.fontSize = 12;
+                et.color = new Color(0.42f, 0.46f, 0.54f);
+                et.font = UIFontHelper.GetDefaultFont();
             }
 
             // Renderizar tarjeta de botón "[+] MÁS"
@@ -288,12 +317,11 @@ namespace ArtSimulator
             if (newProductModal != null)
                 newProductModal.SetActive(true);
 
-            currentPrice = 5000;
-            int count = (TabletManager.Instance != null) ? TabletManager.Instance.StoreProducts.Count + 1 : 1;
-            currentProductName = $"Producto {count}";
+            currentPrice = 2000;
+            currentProductName = "Ilustración";
 
             if (priceText != null) priceText.text = $"${currentPrice}";
-            if (productNameInputText != null) productNameInputText.text = currentProductName;
+            if (productNameInputText != null) productNameInputText.text = $"Nombre: {currentProductName}";
             if (modalErrorText != null) modalErrorText.text = "";
 
             chosenPhoto = null;
@@ -316,50 +344,117 @@ namespace ArtSimulator
         {
             if (photoPickerContent == null || TabletManager.Instance == null) return;
 
+            var toDestroy = new List<GameObject>();
             foreach (Transform child in photoPickerContent)
             {
-                Destroy(child.gameObject);
+                toDestroy.Add(child.gameObject);
+            }
+            for (int i = 0; i < toDestroy.Count; i++)
+            {
+                SafeDestroy(toDestroy[i]);
             }
 
-            IReadOnlyList<Texture2D> photos = TabletManager.Instance.CapturedPhotos;
-            if (photos == null || photos.Count == 0)
+            // Recopilar todas las obras disponibles (dibujos escaneados y fotos de cámara)
+            List<ArtworkData> availableArtworks = new List<ArtworkData>();
+            if (TabletManager.Instance.ScannedArtworks != null)
+            {
+                for (int i = 0; i < TabletManager.Instance.ScannedArtworks.Count; i++)
+                {
+                    ArtworkData art = TabletManager.Instance.ScannedArtworks[i];
+                    if (art != null && art.texture != null)
+                        availableArtworks.Add(art);
+                }
+            }
+            if (TabletManager.Instance.PhotoArtworks != null)
+            {
+                for (int i = 0; i < TabletManager.Instance.PhotoArtworks.Count; i++)
+                {
+                    ArtworkData pArt = TabletManager.Instance.PhotoArtworks[i];
+                    if (pArt != null && pArt.texture != null)
+                        availableArtworks.Add(pArt);
+                }
+            }
+
+            if (availableArtworks.Count == 0)
             {
                 if (modalErrorText != null)
-                    modalErrorText.text = "¡Toma primero una foto con la cámara!";
+                    modalErrorText.text = "¡Aún no has escaneado ningún dibujo ni tomado fotos!\nEscanea un dibujo en la impresora o toma una foto primero.";
                 return;
             }
 
-            for (int i = 0; i < photos.Count; i++)
+            for (int i = 0; i < availableArtworks.Count; i++)
             {
-                Texture2D photo = photos[i];
-                GameObject item = new GameObject($"PhotoItem_{i}", typeof(RectTransform), typeof(Image), typeof(Button));
-                RectTransform rt = item.GetComponent<RectTransform>();
-                rt.sizeDelta = new Vector2(70, 70);
+                ArtworkData art = availableArtworks[i];
+                Sprite spr = art.GetSprite();
 
-                Image img = item.GetComponent<Image>();
-                img.sprite = Sprite.Create(photo, new Rect(0, 0, photo.width, photo.height), new Vector2(0.5f, 0.5f));
-                img.preserveAspect = true;
+                GameObject item = new GameObject($"ArtItem_{i}", typeof(RectTransform), typeof(Image), typeof(Button));
+                RectTransform rt = item.GetComponent<RectTransform>();
+                rt.sizeDelta = new Vector2(75, 75);
+
+                Image bg = item.GetComponent<Image>();
+                bg.color = new Color(0.92f, 0.94f, 0.98f);
+
+                // Miniatura dentro del item
+                GameObject thumbObj = new GameObject("Thumbnail", typeof(RectTransform), typeof(Image));
+                thumbObj.transform.SetParent(item.transform, false);
+                RectTransform thumbRt = thumbObj.GetComponent<RectTransform>();
+                thumbRt.anchorMin = new Vector2(0.08f, 0.22f);
+                thumbRt.anchorMax = new Vector2(0.92f, 0.95f);
+                thumbRt.offsetMin = Vector2.zero;
+                thumbRt.offsetMax = Vector2.zero;
+
+                Image thumbImg = thumbObj.GetComponent<Image>();
+                thumbImg.sprite = spr;
+                thumbImg.preserveAspect = true;
+                thumbImg.raycastTarget = false;
+
+                // Etiqueta del título
+                GameObject lblObj = new GameObject("TitleLbl", typeof(RectTransform), typeof(Text));
+                lblObj.transform.SetParent(item.transform, false);
+                RectTransform lblRt = lblObj.GetComponent<RectTransform>();
+                lblRt.anchorMin = new Vector2(0.04f, 0.02f);
+                lblRt.anchorMax = new Vector2(0.96f, 0.22f);
+                lblRt.offsetMin = Vector2.zero;
+                lblRt.offsetMax = Vector2.zero;
+
+                Text lblTxt = lblObj.GetComponent<Text>();
+                lblTxt.text = art.title;
+                lblTxt.fontSize = 9;
+                lblTxt.alignment = TextAnchor.MiddleCenter;
+                lblTxt.color = new Color(0.15f, 0.15f, 0.2f);
+                lblTxt.font = UIFontHelper.GetDefaultFont();
+                lblTxt.raycastTarget = false;
 
                 Button btn = item.GetComponent<Button>();
-                btn.onClick.AddListener(() => SelectPhotoForProduct(photo, img.sprite));
+                btn.onClick.AddListener(() => SelectArtworkForProduct(art));
 
                 item.transform.SetParent(photoPickerContent, false);
             }
 
-            // Seleccionar automáticamente la última foto tomada
-            Texture2D latest = photos[photos.Count - 1];
-            SelectPhotoForProduct(latest, Sprite.Create(latest, new Rect(0, 0, latest.width, latest.height), new Vector2(0.5f, 0.5f)));
+            // Seleccionar por defecto la obra más reciente
+            ArtworkData latest = availableArtworks[availableArtworks.Count - 1];
+            SelectArtworkForProduct(latest);
         }
 
-        private void SelectPhotoForProduct(Texture2D photo, Sprite sprite)
+        private void SelectArtworkForProduct(ArtworkData art)
         {
-            chosenPhoto = photo;
+            if (art == null || art.texture == null) return;
+
+            chosenPhoto = art.texture;
+            currentProductName = !string.IsNullOrEmpty(art.title) ? art.title : "Ilustración";
+
+            if (productNameInputText != null)
+            {
+                productNameInputText.text = $"Nombre: {currentProductName}";
+            }
+
             if (selectedPhotoPreview != null)
             {
-                selectedPhotoPreview.sprite = sprite;
+                selectedPhotoPreview.sprite = art.GetSprite();
                 selectedPhotoPreview.color = Color.white;
                 selectedPhotoPreview.preserveAspect = true;
             }
+
             if (modalErrorText != null) modalErrorText.text = "";
         }
 
@@ -377,7 +472,7 @@ namespace ArtSimulator
             if (chosenPhoto == null)
             {
                 if (modalErrorText != null)
-                    modalErrorText.text = "Por favor selecciona una foto.";
+                    modalErrorText.text = "Por favor selecciona una ilustración o fotografía de la lista.";
                 return;
             }
 
@@ -398,9 +493,14 @@ namespace ArtSimulator
         {
             if (TabletManager.Instance == null || ordersContentContainer == null) return;
 
+            var toDestroy = new List<GameObject>();
             foreach (Transform child in ordersContentContainer)
             {
-                Destroy(child.gameObject);
+                toDestroy.Add(child.gameObject);
+            }
+            for (int i = 0; i < toDestroy.Count; i++)
+            {
+                SafeDestroy(toDestroy[i]);
             }
 
             IReadOnlyList<OrderItem> orders = TabletManager.Instance.CurrentOrders;
@@ -477,11 +577,19 @@ namespace ArtSimulator
             reqRt.offsetMax = Vector2.zero;
 
             Text reqText = reqObj.GetComponent<Text>();
-            reqText.text = $"{order.unitsRequested} PEDIDAS";
+            if (order.unitsDelivered > 0)
+            {
+                reqText.text = $"{order.unitsDelivered}/{order.unitsRequested} LISTAS";
+                reqText.color = new Color(0.1f, 0.55f, 0.2f);
+            }
+            else
+            {
+                reqText.text = $"{order.unitsRequested} PEDIDAS";
+                reqText.color = new Color(0.7f, 0.2f, 0.1f);
+            }
             reqText.fontSize = 10;
             reqText.fontStyle = FontStyle.Bold;
             reqText.alignment = TextAnchor.MiddleCenter;
-            reqText.color = new Color(0.7f, 0.2f, 0.1f);
             reqText.font = UIFontHelper.GetDefaultFont();
 
             return cardObj;

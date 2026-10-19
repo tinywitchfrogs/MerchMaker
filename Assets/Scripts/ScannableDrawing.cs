@@ -73,11 +73,31 @@ namespace ArtSimulator
 
             if (artworkTexture == null)
             {
-                artworkTexture = GenerateSampleArtwork(artworkTitle);
+                // Intentar recuperar del material existente si ya tiene textura
+                if (meshRenderer != null && meshRenderer.sharedMaterial != null)
+                {
+                    Texture matTex = meshRenderer.sharedMaterial.HasProperty("_BaseMap")
+                        ? meshRenderer.sharedMaterial.GetTexture("_BaseMap")
+                        : meshRenderer.sharedMaterial.mainTexture;
+                    if (matTex is Texture2D t2d)
+                    {
+                        artworkTexture = t2d;
+                    }
+                }
+
+                // Si es un dibujo original y aún no tiene textura, generar la de muestra
+                if (artworkTexture == null && isOriginal)
+                {
+                    artworkTexture = GenerateSampleArtwork(artworkTitle);
+                }
             }
 
-            ApplyTextureToMaterial();
-            artworkData = new ArtworkData(artworkTitle, artworkTexture);
+            if (artworkTexture != null)
+            {
+                ApplyTextureToMaterial();
+                artworkData = new ArtworkData(artworkTitle, artworkTexture);
+            }
+
             UpdateAuraVisuals();
         }
 
@@ -143,16 +163,53 @@ namespace ArtSimulator
                 artworkTitle = "Ilustración Artística";
             }
 
-            if (artworkTexture == null)
+            Texture2D currentVisualTex = null;
+
+            // 1. Si el dibujo tiene DrawingCanvas, obtener la textura real que el jugador pintó
+            DrawingCanvas canvas = GetComponent<DrawingCanvas>();
+            if (canvas != null)
             {
-                artworkTexture = GenerateSampleArtwork(artworkTitle);
+                currentVisualTex = canvas.GetTexture();
+            }
+
+            // 2. Si no hay canvas, buscar en el material del Renderer
+            if (currentVisualTex == null)
+            {
+                if (meshRenderer == null) meshRenderer = GetComponent<Renderer>();
+                if (meshRenderer != null && meshRenderer.material != null)
+                {
+                    Texture matTex = meshRenderer.material.HasProperty("_BaseMap")
+                        ? meshRenderer.material.GetTexture("_BaseMap")
+                        : meshRenderer.material.mainTexture;
+                    if (matTex is Texture2D t2d)
+                    {
+                        currentVisualTex = t2d;
+                    }
+                }
+            }
+
+            // 3. Si sigue nula, usar artworkTexture
+            if (currentVisualTex == null && artworkTexture != null)
+            {
+                currentVisualTex = artworkTexture;
+            }
+
+            // 4. Si aún no hay textura, generar muestra
+            if (currentVisualTex == null)
+            {
+                currentVisualTex = GenerateSampleArtwork(artworkTitle);
+                artworkTexture = currentVisualTex;
                 ApplyTextureToMaterial();
             }
 
-            if (artworkData == null || string.IsNullOrEmpty(artworkData.title) || artworkData.texture == null)
+            artworkTexture = currentVisualTex;
+
+            // Mantener artworkData sincronizado con la textura real
+            if (artworkData == null || artworkData.texture != currentVisualTex)
             {
-                artworkData = new ArtworkData(artworkTitle, artworkTexture);
+                artworkData = new ArtworkData(artworkTitle, currentVisualTex);
             }
+
             return artworkData;
         }
 
@@ -196,61 +253,12 @@ namespace ArtSimulator
             int height = 512;
             Texture2D tex = new Texture2D(width, height, TextureFormat.RGBA32, false);
 
-            Color bgColor = new Color(0.96f, 0.94f, 0.90f); // Papel color crema
+            Color paperColor = Color.white; // Hoja de papel limpia en blanco
             Color[] pixels = new Color[width * height];
 
             for (int i = 0; i < pixels.Length; i++)
             {
-                pixels[i] = bgColor;
-            }
-
-            // Dibujar un marco decorativo
-            int border = 24;
-            Color borderColor = new Color(0.2f, 0.2f, 0.25f);
-            for (int x = border; x < width - border; x++)
-            {
-                for (int y = border; y < height - border; y++)
-                {
-                    if (x < border + 6 || x > width - border - 6 || y < border + 6 || y > height - border - 6)
-                    {
-                        pixels[y * width + x] = borderColor;
-                    }
-                }
-            }
-
-            // Dibujar formas artísticas (círculos y degradados de colores vibrantes)
-            Vector2 center = new Vector2(width / 2f, height / 2f);
-            float radiusSun = 90f;
-            Color sunColor = new Color(0.98f, 0.65f, 0.2f);
-            Color mountainColor = new Color(0.25f, 0.45f, 0.65f);
-            Color groundColor = new Color(0.35f, 0.60f, 0.4f);
-
-            for (int x = 0; x < width; x++)
-            {
-                for (int y = 0; y < height; y++)
-                {
-                    Vector2 p = new Vector2(x, y);
-                    float distToCenter = Vector2.Distance(p, center + new Vector2(0, 40));
-
-                    // Sol / Círculo artístico
-                    if (distToCenter < radiusSun)
-                    {
-                        pixels[y * width + x] = sunColor;
-                    }
-
-                    // Montaña triangular
-                    float mountainHeight = 220f - Mathf.Abs(x - width / 2f) * 0.8f;
-                    if (y < mountainHeight && y > 120)
-                    {
-                        pixels[y * width + x] = mountainColor;
-                    }
-
-                    // Suelo
-                    if (y <= 120 && x >= border && x <= width - border)
-                    {
-                        pixels[y * width + x] = groundColor;
-                    }
-                }
+                pixels[i] = paperColor;
             }
 
             tex.SetPixels(pixels);

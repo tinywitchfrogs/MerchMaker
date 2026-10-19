@@ -157,6 +157,11 @@ namespace ArtSimulator
             });
 
             // 2. Apps del Menú Principal
+            SetupButton(canvasObj.transform, "TabletDeviceFrame/ScreenArea/HomeScreen/AppsGrid/App_Galería de Fotos", "Galería de Fotos", () =>
+            {
+                if (TabletManager.Instance != null) TabletManager.Instance.ShowImages();
+            });
+
             SetupButton(canvasObj.transform, "TabletDeviceFrame/ScreenArea/HomeScreen/AppsGrid/App_Galería de Arte", "Galería de Arte", () =>
             {
                 if (TabletManager.Instance != null) TabletManager.Instance.ShowImages();
@@ -171,6 +176,31 @@ namespace ArtSimulator
             {
                 if (TabletManager.Instance != null) TabletManager.Instance.ShowStore();
             });
+
+            // Respaldo de búsqueda en AppsGrid para enlazar cualquier variante
+            Transform appsGrid = canvasObj.transform.Find("TabletDeviceFrame/ScreenArea/HomeScreen/AppsGrid");
+            if (appsGrid != null)
+            {
+                foreach (Transform child in appsGrid)
+                {
+                    Button childBtn = child.GetComponent<Button>();
+                    if (childBtn == null) continue;
+
+                    string lower = child.name.ToLower();
+                    if (lower.Contains("galer") || lower.Contains("foto") || lower.Contains("imag"))
+                    {
+                        SetupSingleButton(childBtn, "Galería de Fotos", () => TabletManager.Instance?.ShowImages());
+                    }
+                    else if (lower.Contains("cam"))
+                    {
+                        SetupSingleButton(childBtn, "Cámara", () => TabletManager.Instance?.ShowCamera());
+                    }
+                    else if (lower.Contains("tienda") || lower.Contains("store"))
+                    {
+                        SetupSingleButton(childBtn, "Tienda de Arte", () => TabletManager.Instance?.ShowStore());
+                    }
+                }
+            }
 
             // 3. Botones Home (Inicio) en todas las pantallas
             var allButtons = canvasObj.GetComponentsInChildren<Button>(true);
@@ -216,6 +246,19 @@ namespace ArtSimulator
                     var g = imagesScreenPanel.GetComponent<TabletGalleryApp>();
                     if (g != null) g.IncreaseQuantity();
                 }
+            });
+
+            // Pestañas de Galería (Escaneos vs Fotos)
+            SetupButton(canvasObj.transform, "TabletDeviceFrame/ScreenArea/ImagesScreen/GalleryTabBar/ScansTab", "Ver Escaneos", () =>
+            {
+                if (galleryApp != null) galleryApp.SwitchTab(GalleryTab.Scans);
+                else if (imagesScreenPanel != null) imagesScreenPanel.GetComponent<TabletGalleryApp>()?.SwitchTab(GalleryTab.Scans);
+            });
+
+            SetupButton(canvasObj.transform, "TabletDeviceFrame/ScreenArea/ImagesScreen/GalleryTabBar/PhotosTab", "Ver Fotos", () =>
+            {
+                if (galleryApp != null) galleryApp.SwitchTab(GalleryTab.Photos);
+                else if (imagesScreenPanel != null) imagesScreenPanel.GetComponent<TabletGalleryApp>()?.SwitchTab(GalleryTab.Photos);
             });
 
             // 5. Botón Disparador en Pantalla de Cámara

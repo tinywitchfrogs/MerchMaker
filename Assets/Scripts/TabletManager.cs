@@ -28,6 +28,7 @@ namespace ArtSimulator
         [Header("Datos Almacenados en la Tableta")]
         [SerializeField] private List<ArtworkData> scannedArtworks = new List<ArtworkData>();
         [SerializeField] private List<Texture2D> capturedPhotos = new List<Texture2D>();
+        [SerializeField] private List<ArtworkData> photoArtworks = new List<ArtworkData>();
         [SerializeField] private List<ProductItem> storeProducts = new List<ProductItem>();
         [SerializeField] private List<OrderItem> currentOrders = new List<OrderItem>();
 
@@ -43,6 +44,7 @@ namespace ArtSimulator
 
         public IReadOnlyList<ArtworkData> ScannedArtworks => scannedArtworks;
         public IReadOnlyList<Texture2D> CapturedPhotos => capturedPhotos;
+        public IReadOnlyList<ArtworkData> PhotoArtworks => photoArtworks;
         public IReadOnlyList<ProductItem> StoreProducts => storeProducts;
         public IReadOnlyList<OrderItem> CurrentOrders => currentOrders;
         public TabletScreen CurrentScreen => currentScreen;
@@ -115,9 +117,11 @@ namespace ArtSimulator
             {
                 scannedArtworks.Clear();
                 capturedPhotos.Clear();
+                photoArtworks.Clear();
             }
             SetPhysicalTabletVisuals(true);
-            ShowScreen(TabletScreen.Home);
+            currentScreen = TabletScreen.Home;
+            CloseTablet(); // La tableta debe iniciar cerrada sobre la mesa de trabajo
         }
 
         public void ShowScreen(TabletScreen screen)
@@ -151,8 +155,15 @@ namespace ArtSimulator
         {
             if (artwork == null || string.IsNullOrEmpty(artwork.title)) return;
 
-            // Evitar duplicar exactamente la misma referencia si ya está
-            if (!scannedArtworks.Exists(a => a.id == artwork.id))
+            // Actualizar si ya existe una versión anterior de esta ilustración o añadirla si es nueva
+            int existingIndex = scannedArtworks.FindIndex(a => a.id == artwork.id || a.title == artwork.title);
+            if (existingIndex >= 0)
+            {
+                scannedArtworks[existingIndex] = artwork;
+                Debug.Log($"<color=cyan>[Tableta]</color> Ilustración actualizada en la tableta: <b>{artwork.title}</b>");
+                OnArtworksChanged?.Invoke();
+            }
+            else
             {
                 scannedArtworks.Add(artwork);
                 Debug.Log($"<color=cyan>[Tableta]</color> Nueva ilustración recibida de la impresora: <b>{artwork.title}</b>");
@@ -164,7 +175,12 @@ namespace ArtSimulator
         {
             if (photo == null) return;
             capturedPhotos.Add(photo);
-            Debug.Log($"<color=green>[Tableta]</color> Foto guardada en la galería. Total fotos: {capturedPhotos.Count}");
+
+            // Registrar exclusivamente en la galería fotográfica de la tableta
+            ArtworkData photoArtwork = new ArtworkData($"Foto #{capturedPhotos.Count}", photo);
+            photoArtworks.Add(photoArtwork);
+
+            Debug.Log($"<color=green>[Tableta]</color> Foto #{capturedPhotos.Count} guardada en la galería fotográfica (lista para ver, imprimir o publicar en tienda). Total fotos: {capturedPhotos.Count}");
             OnPhotosChanged?.Invoke();
         }
 
@@ -183,6 +199,14 @@ namespace ArtSimulator
             currentOrders.Insert(0, order);
             Debug.Log($"<color=magenta>[Pedidos]</color> ¡Nuevo pedido entrante! #{order.orderId} de {order.product.title} (x{order.unitsRequested})");
             OnOrdersChanged?.Invoke();
+        }
+
+        public void UpdateOrderProgress(OrderItem order)
+        {
+            if (order != null && currentOrders.Contains(order))
+            {
+                OnOrdersChanged?.Invoke();
+            }
         }
 
         public void CompleteOrder(OrderItem order)

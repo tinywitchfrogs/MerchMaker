@@ -42,7 +42,12 @@ namespace ArtSimulator
         {
             if (drawingTexture != null) return;
 
-            // Inicializar textura blanca en memoria
+            // Si este objeto es una copia impresa, NO debe inicializar un lienzo blanco ni sobrescribir su textura
+            if (gameObject.name.Contains("Copia") || (scannableDrawing != null && !scannableDrawing.IsOriginal))
+            {
+                return;
+            }
+
             colorMap = new Color[textureWidth * textureHeight];
             for (int i = 0; i < colorMap.Length; i++)
             {
@@ -72,6 +77,41 @@ namespace ArtSimulator
                     ? $"Dibujo {gameObject.name}" 
                     : scannableDrawing.GetArtworkData().title;
                 scannableDrawing.SetArtwork(new ArtworkData(title, drawingTexture));
+            }
+        }
+
+        public void ResetToFreshCanvas(string title = null)
+        {
+            if (meshRenderer == null) meshRenderer = GetComponent<Renderer>();
+            if (scannableDrawing == null) scannableDrawing = GetComponent<ScannableDrawing>();
+
+            colorMap = new Color[textureWidth * textureHeight];
+            for (int i = 0; i < colorMap.Length; i++)
+            {
+                colorMap[i] = Color.white;
+            }
+
+            drawingTexture = new Texture2D(textureWidth, textureHeight, TextureFormat.RGBA32, false);
+            drawingTexture.filterMode = FilterMode.Bilinear;
+            drawingTexture.wrapMode = TextureWrapMode.Clamp;
+            drawingTexture.name = $"Lienzo_{gameObject.name}";
+            drawingTexture.SetPixels(colorMap);
+            drawingTexture.Apply(false);
+            hasBeenDrawnOn = false;
+
+            if (meshRenderer != null && meshRenderer.sharedMaterial != null)
+            {
+                Material instancedMat = new Material(meshRenderer.sharedMaterial);
+                if (instancedMat.HasProperty("_BaseMap")) instancedMat.SetTexture("_BaseMap", drawingTexture);
+                if (instancedMat.HasProperty("_MainTex")) instancedMat.SetTexture("_MainTex", drawingTexture);
+                meshRenderer.material = instancedMat;
+            }
+
+            if (scannableDrawing != null)
+            {
+                string finalTitle = string.IsNullOrEmpty(title) ? gameObject.name : title;
+                scannableDrawing.SetArtwork(new ArtworkData(finalTitle, drawingTexture));
+                scannableDrawing.SetIsOriginal(true);
             }
         }
 

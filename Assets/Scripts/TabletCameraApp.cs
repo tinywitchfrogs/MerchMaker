@@ -111,14 +111,31 @@ namespace ArtSimulator
 
 #if ENABLE_INPUT_SYSTEM
             var kb = UnityEngine.InputSystem.Keyboard.current;
-            if (kb != null && (kb.spaceKey.wasPressedThisFrame || kb.enterKey.wasPressedThisFrame))
+            var mouse = UnityEngine.InputSystem.Mouse.current;
+            if (kb != null && (kb.fKey.wasPressedThisFrame || kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame))
             {
                 TakePhoto();
             }
+            else if (mouse != null && mouse.leftButton.wasPressedThisFrame)
+            {
+                bool isOverUI = UnityEngine.EventSystems.EventSystem.current != null && UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject();
+                if (!isOverUI)
+                {
+                    TakePhoto();
+                }
+            }
 #else
-            if (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Return))
+            if (Input.GetKeyDown(KeyCode.F) || Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
             {
                 TakePhoto();
+            }
+            else if (Input.GetMouseButtonDown(0))
+            {
+                bool isOverUI = UnityEngine.EventSystems.EventSystem.current != null && UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject();
+                if (!isOverUI)
+                {
+                    TakePhoto();
+                }
             }
 #endif
         }

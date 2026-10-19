@@ -90,10 +90,14 @@ namespace ArtSimulator.Editor
                 ConfigureDrawingSheet(drawing3, "Dibujo 3", new Vector3(8.30f, 0.5937f, -7.1495f));
 
                 Debug.Log("<color=green>[Simulador]</color> 3 Hojas de dibujo configuradas con éxito (Dibujo 1, 2 y 3) con soporte para pintura interactiva.");
+
+                // Configurar dispensador de hojas de papel limpias
+                SetupPaperDispenser(baseDrawing);
             }
             else
             {
                 Debug.LogWarning("[Simulador] No se encontró el GameObject 'Dibujo' o 'Dibujo_1' en la escena activa.");
+                SetupPaperDispenser(null);
             }
 
 
@@ -134,6 +138,62 @@ namespace ArtSimulator.Editor
 
             var canvas = sheet.GetComponent<DrawingCanvas>();
             if (canvas == null) canvas = sheet.AddComponent<DrawingCanvas>();
+        }
+
+        private static void SetupPaperDispenser(GameObject baseDrawing)
+        {
+            if (GameObject.Find("PilaDeHojas") != null) return;
+
+            GameObject d3 = GameObject.Find("Dibujo_3") ?? baseDrawing ?? GameObject.Find("Dibujo_1");
+            Vector3 dispenserPos = d3 != null 
+                ? (d3.transform.position + new Vector3(-0.55f, 0f, 0f)) 
+                : new Vector3(7.75f, 0.5937f, -7.1495f);
+
+            GameObject stackObj = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            stackObj.name = "PilaDeHojas";
+            stackObj.transform.position = dispenserPos;
+            stackObj.transform.rotation = d3 != null ? d3.transform.rotation : Quaternion.Euler(0, 175.08f, 0);
+            stackObj.transform.localScale = new Vector3(0.42f, 0.05f, 0.32f);
+
+            // Material para la pila de papel
+            Renderer mr = stackObj.GetComponent<Renderer>();
+            if (mr != null)
+            {
+                Shader litShader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+                Material mat = new Material(litShader);
+                mat.color = new Color(0.96f, 0.96f, 0.95f);
+                if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", new Color(0.96f, 0.96f, 0.95f));
+                mr.material = mat;
+            }
+
+            // Bandeja base estilo organizador de escritorio
+            GameObject tray = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            tray.name = "BandejaSoporte";
+            tray.transform.SetParent(stackObj.transform, false);
+            tray.transform.localPosition = new Vector3(0, -0.45f, 0);
+            tray.transform.localScale = new Vector3(1.10f, 0.25f, 1.10f);
+            var trayCol = tray.GetComponent<Collider>();
+            if (trayCol != null) Object.DestroyImmediate(trayCol);
+
+            Renderer tr = tray.GetComponent<Renderer>();
+            if (tr != null)
+            {
+                Shader litShader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+                Material tMat = new Material(litShader);
+                tMat.color = new Color(0.20f, 0.16f, 0.12f);
+                if (tMat.HasProperty("_BaseColor")) tMat.SetColor("_BaseColor", new Color(0.20f, 0.16f, 0.12f));
+                tr.material = tMat;
+            }
+
+            BoxCollider bc = stackObj.GetComponent<BoxCollider>();
+            if (bc != null)
+            {
+                bc.center = new Vector3(0f, 0.5f, 0f);
+                bc.size = new Vector3(1.2f, 2.5f, 1.2f);
+            }
+
+            stackObj.AddComponent<PaperDispenser>();
+            Debug.Log($"<color=green>[Simulador]</color> Pila de hojas para dibujo interactivo configurada en {dispenserPos}.");
         }
     }
 }
