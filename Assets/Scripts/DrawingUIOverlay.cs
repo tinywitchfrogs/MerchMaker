@@ -80,15 +80,20 @@ namespace ArtSimulator
             // Indicador de modo
             CreateLabel(toolbar.transform, "🖌️ <b>DIBUJAR</b>", 13, Color.cyan, 95);
 
-            // Paleta de colores
+            // Paleta de colores enriquecida
             Color[] palette = new Color[]
             {
                 Color.black,
-                new Color(0.12f, 0.45f, 0.95f), // Azul
-                new Color(0.90f, 0.18f, 0.18f), // Rojo
-                new Color(0.14f, 0.68f, 0.28f), // Verde
-                new Color(0.95f, 0.78f, 0.10f), // Amarillo
-                new Color(0.65f, 0.20f, 0.90f), // Morado
+                Color.white,                     // Blanco (para detalles, luces o pintar en blanco)
+                new Color(0.12f, 0.45f, 0.95f),  // Azul intenso
+                new Color(0.35f, 0.75f, 0.98f),  // Celeste cielo
+                new Color(0.90f, 0.18f, 0.18f),  // Rojo pasión
+                new Color(0.96f, 0.52f, 0.12f),  // Naranja cálido
+                new Color(0.95f, 0.78f, 0.10f),  // Amarillo sol
+                new Color(0.14f, 0.68f, 0.28f),  // Verde naturaleza
+                new Color(0.65f, 0.20f, 0.90f),  // Morado / Violeta
+                new Color(0.95f, 0.35f, 0.65f),  // Rosa chicle
+                new Color(0.48f, 0.28f, 0.15f),  // Marrón tierra / madera
             };
 
             foreach (var col in palette)
@@ -155,14 +160,14 @@ namespace ArtSimulator
             btnObj.transform.SetParent(parent, false);
 
             LayoutElement le = btnObj.AddComponent<LayoutElement>();
-            le.preferredWidth = 36;
-            le.preferredHeight = 36;
+            le.preferredWidth = 30;
+            le.preferredHeight = 30;
 
             Image img = btnObj.GetComponent<Image>();
             img.color = color;
 
             Outline outline = btnObj.AddComponent<Outline>();
-            outline.effectColor = Color.white;
+            outline.effectColor = (color == Color.white) ? new Color(0.35f, 0.35f, 0.35f, 1f) : Color.white;
             outline.effectDistance = new Vector2(1.5f, -1.5f);
 
             Button btn = btnObj.GetComponent<Button>();

@@ -170,6 +170,7 @@ namespace ArtSimulator
                 scannedArtworks.Clear();
                 capturedPhotos.Clear();
                 photoArtworks.Clear();
+                photoCounter = 0;
                 orderRoutine = StartCoroutine(OrderGeneratorRoutine());
             }
             SetPhysicalTabletVisuals(true);
@@ -232,17 +233,64 @@ namespace ArtSimulator
             }
         }
 
+        [SerializeField] private int photoCounter = 0;
+
         public void AddCapturedPhoto(Texture2D photo)
         {
             if (photo == null) return;
+            photoCounter++;
             capturedPhotos.Add(photo);
 
-            // Registrar exclusivamente en la galería fotográfica de la tableta
-            ArtworkData photoArtwork = new ArtworkData($"Foto #{capturedPhotos.Count}", photo);
+            // Registrar exclusivamente en la galería fotográfica de la tableta con ID único y número consecutivo
+            ArtworkData photoArtwork = new ArtworkData($"Foto #{photoCounter}", photo);
             photoArtworks.Add(photoArtwork);
 
-            Debug.Log($"<color=green>[Tableta]</color> Foto #{capturedPhotos.Count} guardada en la galería fotográfica (lista para ver, imprimir o publicar en tienda). Total fotos: {capturedPhotos.Count}");
+            Debug.Log($"<color=green>[Tableta]</color> Foto #{photoCounter} guardada en la galería fotográfica. Total fotos activas: {photoArtworks.Count}");
             OnPhotosChanged?.Invoke();
+        }
+
+        public bool DeleteCapturedPhoto(ArtworkData photoArtwork)
+        {
+            if (photoArtwork == null) return false;
+
+            // Buscar coincidencia exacta por ID único o referencia de textura
+            int idx = photoArtworks.FindIndex(p => p != null && (p.id == photoArtwork.id || (p.texture != null && photoArtwork.texture != null && p.texture == photoArtwork.texture)));
+            if (idx >= 0)
+            {
+                ArtworkData removedArt = photoArtworks[idx];
+                photoArtworks.RemoveAt(idx);
+
+                // Mantener capturedPhotos sincronizado por referencia de textura
+                if (removedArt.texture != null)
+                {
+                    capturedPhotos.Remove(removedArt.texture);
+                }
+                else if (idx < capturedPhotos.Count)
+                {
+                    capturedPhotos.RemoveAt(idx);
+                }
+
+                Debug.Log($"<color=orange>[Tableta]</color> Foto '{removedArt.title}' eliminada de la galería. Restantes: {photoArtworks.Count}");
+                OnPhotosChanged?.Invoke();
+                return true;
+            }
+            return false;
+        }
+
+        public bool DeleteCapturedPhoto(Texture2D photo)
+        {
+            if (photo == null) return false;
+            int idx = photoArtworks.FindIndex(p => p != null && p.texture == photo);
+            if (idx >= 0)
+            {
+                return DeleteCapturedPhoto(photoArtworks[idx]);
+            }
+            else
+            {
+                bool removed = capturedPhotos.Remove(photo);
+                if (removed) OnPhotosChanged?.Invoke();
+                return removed;
+            }
         }
 
         public ProductItem PublishProduct(string title, Texture2D photo, int price)

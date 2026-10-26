@@ -28,11 +28,27 @@ public class SendProduct : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
+        TryProcessDeliveredCollider(other);
+    }
+
+    private void OnTriggerStay(Collider other)
+    {
+        TryProcessDeliveredCollider(other);
+    }
+
+    private void TryProcessDeliveredCollider(Collider other)
+    {
         if (other == null) return;
 
-        // Evitar procesar un objeto que aún está sostenido por el jugador
+        // Evitar procesar un objeto que aún está sostenido por el jugador (Desktop o VR)
         if (FirstPersonPlayerController.Instance != null && 
             FirstPersonPlayerController.Instance.IsHoldingObject(other.transform))
+        {
+            return;
+        }
+
+        var grab = other.GetComponentInParent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRGrabInteractable>();
+        if (grab != null && grab.isSelected)
         {
             return;
         }
@@ -86,6 +102,10 @@ public class SendProduct : MonoBehaviour
         if (targetOrder != null)
         {
             targetOrder.unitsDelivered++;
+            if (targetOrder.product != null)
+            {
+                targetOrder.product.totalUnitsSold++;
+            }
             Debug.Log($"<color=cyan>[Caja de Envíos]</color> Unidad entregada ({targetOrder.unitsDelivered}/{targetOrder.unitsRequested}) para el pedido <b>{targetOrder.orderId}</b> ({targetOrder.product.title}).");
 
             // Si se completaron todas las unidades requeridas

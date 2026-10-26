@@ -41,8 +41,51 @@ namespace ArtSimulator
                 audioSource.playOnAwake = false;
             }
 
+            EnsureReferences();
             SetupCameraAndTexture();
+            WireButtons();
+        }
 
+        private void Start()
+        {
+            EnsureReferences();
+            WireButtons();
+        }
+
+        public void EnsureReferences()
+        {
+            if (viewfinderDisplay == null)
+            {
+                viewfinderDisplay = transform.Find("Viewfinder")?.GetComponent<RawImage>();
+            }
+            if (flashOverlay == null)
+            {
+                flashOverlay = transform.Find("Viewfinder/FlashOverlay")?.GetComponent<Image>();
+            }
+            if (homeButton == null)
+            {
+                homeButton = transform.Find("CameraControls/HomeButton")?.GetComponent<Button>();
+            }
+            if (shutterButton == null)
+            {
+                shutterButton = transform.Find("CameraControls/ShutterButton")?.GetComponent<Button>();
+            }
+            if (zoomInButton == null)
+            {
+                zoomInButton = transform.Find("CameraControls/ZoomControls/ZoomInBtn")?.GetComponent<Button>();
+            }
+            if (zoomOutButton == null)
+            {
+                zoomOutButton = transform.Find("CameraControls/ZoomControls/ZoomOutBtn")?.GetComponent<Button>();
+            }
+            if (zoomIndicatorText == null)
+            {
+                zoomIndicatorText = transform.Find("CameraControls/ZoomControls/ZoomText/ZoomValue")?.GetComponent<Text>();
+            }
+        }
+
+        public void WireButtons()
+        {
             if (shutterButton != null)
             {
                 shutterButton.onClick.RemoveAllListeners();
@@ -57,6 +100,22 @@ namespace ArtSimulator
                 homeButton.onClick.AddListener(() => TabletManager.Instance?.ShowHome());
                 var trig = homeButton.GetComponent<TabletButtonTrigger>() ?? homeButton.gameObject.AddComponent<TabletButtonTrigger>();
                 trig.SetAction("Inicio", () => TabletManager.Instance?.ShowHome());
+            }
+
+            if (zoomInButton != null)
+            {
+                zoomInButton.onClick.RemoveAllListeners();
+                zoomInButton.onClick.AddListener(ZoomIn);
+                var trig = zoomInButton.GetComponent<TabletButtonTrigger>() ?? zoomInButton.gameObject.AddComponent<TabletButtonTrigger>();
+                trig.SetAction("Zoom +", ZoomIn);
+            }
+
+            if (zoomOutButton != null)
+            {
+                zoomOutButton.onClick.RemoveAllListeners();
+                zoomOutButton.onClick.AddListener(ZoomOut);
+                var trig = zoomOutButton.GetComponent<TabletButtonTrigger>() ?? zoomOutButton.gameObject.AddComponent<TabletButtonTrigger>();
+                trig.SetAction("Zoom -", ZoomOut);
             }
         }
 
@@ -112,7 +171,7 @@ namespace ArtSimulator
 #if ENABLE_INPUT_SYSTEM
             var kb = UnityEngine.InputSystem.Keyboard.current;
             var mouse = UnityEngine.InputSystem.Mouse.current;
-            if (kb != null && (kb.fKey.wasPressedThisFrame || kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame))
+            if (kb != null && (kb.spaceKey.wasPressedThisFrame || kb.fKey.wasPressedThisFrame || kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame))
             {
                 TakePhoto();
             }
@@ -125,7 +184,7 @@ namespace ArtSimulator
                 }
             }
 #else
-            if (Input.GetKeyDown(KeyCode.F) || Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+            if (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.F) || Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
             {
                 TakePhoto();
             }
@@ -148,18 +207,26 @@ namespace ArtSimulator
             var mouse = UnityEngine.InputSystem.Mouse.current;
             if (mouse != null)
             {
-                scrollDelta = mouse.scroll.ReadValue().y;
+                float my = mouse.scroll.ReadValue().y;
+                if (Mathf.Abs(my) > 0.01f)
+                {
+                    scrollDelta = Mathf.Sign(my) * 120f;
+                }
             }
             var kb = UnityEngine.InputSystem.Keyboard.current;
             if (kb != null)
             {
-                if (kb.eKey.isPressed || kb.numpadPlusKey.isPressed) scrollDelta += 120f * Time.deltaTime * 5f;
-                if (kb.qKey.isPressed || kb.numpadMinusKey.isPressed) scrollDelta -= 120f * Time.deltaTime * 5f;
+                if (kb.eKey.isPressed || kb.numpadPlusKey.isPressed || kb.equalsKey.isPressed) scrollDelta += 120f * Time.deltaTime * 5f;
+                if (kb.qKey.isPressed || kb.numpadMinusKey.isPressed || kb.minusKey.isPressed) scrollDelta -= 120f * Time.deltaTime * 5f;
             }
 #else
-            scrollDelta = Input.GetAxis("Mouse ScrollWheel") * 100f;
-            if (Input.GetKey(KeyCode.E) || Input.GetKey(KeyCode.KeypadPlus)) scrollDelta += 120f * Time.deltaTime * 5f;
-            if (Input.GetKey(KeyCode.Q) || Input.GetKey(KeyCode.KeypadMinus)) scrollDelta -= 120f * Time.deltaTime * 5f;
+            float mouseScroll = Input.GetAxis("Mouse ScrollWheel");
+            if (Mathf.Abs(mouseScroll) > 0.001f)
+            {
+                scrollDelta = Mathf.Sign(mouseScroll) * 120f;
+            }
+            if (Input.GetKey(KeyCode.E) || Input.GetKey(KeyCode.KeypadPlus) || Input.GetKey(KeyCode.Equals)) scrollDelta += 120f * Time.deltaTime * 5f;
+            if (Input.GetKey(KeyCode.Q) || Input.GetKey(KeyCode.KeypadMinus) || Input.GetKey(KeyCode.Minus)) scrollDelta -= 120f * Time.deltaTime * 5f;
 #endif
 
             if (Mathf.Abs(scrollDelta) > 0.01f)
@@ -253,6 +320,9 @@ namespace ArtSimulator
 
         private void OnEnable()
         {
+            EnsureReferences();
+            WireButtons();
+
             if (tabletCamera != null)
             {
                 tabletCamera.enabled = true;

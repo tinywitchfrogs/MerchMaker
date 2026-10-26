@@ -37,8 +37,14 @@ namespace ArtSimulator
         [SerializeField] private Button decreaseQtyButton;
         [SerializeField] private Button increaseQtyButton;
 
+        [Header("Eliminar Foto")]
+        [SerializeField] private Button deletePhotoButton;
+
         private ArtworkData currentSelectedArtwork;
         private float lastPrintTime = -1f;
+        private float lastDeleteTime = -1f;
+        private readonly List<GameObject> activeCards = new List<GameObject>();
+        private readonly List<ArtworkData> activeCardArtworks = new List<ArtworkData>();
 
         private void OnEnable()
         {
@@ -90,6 +96,14 @@ namespace ArtSimulator
                 increaseQtyButton.onClick.AddListener(IncreaseQuantity);
                 TabletButtonTrigger it = increaseQtyButton.GetComponent<TabletButtonTrigger>() ?? increaseQtyButton.gameObject.AddComponent<TabletButtonTrigger>();
                 it.SetAction("Más Copias", IncreaseQuantity);
+            }
+
+            if (deletePhotoButton != null)
+            {
+                TabletButtonTrigger dt = deletePhotoButton.GetComponent<TabletButtonTrigger>() ?? deletePhotoButton.gameObject.AddComponent<TabletButtonTrigger>();
+                dt.SetAction("Eliminar Foto", OnDeletePhotoClicked);
+                deletePhotoButton.onClick.RemoveAllListeners();
+                deletePhotoButton.onClick.AddListener(() => dt.TriggerClick());
             }
 
             if (scansTabButton != null)
@@ -167,6 +181,11 @@ namespace ArtSimulator
                     ? "🖨️ DIBUJOS ESCANEADOS" 
                     : "📷 FOTOS DE CÁMARA";
             }
+
+            if (deletePhotoButton != null)
+            {
+                deletePhotoButton.gameObject.SetActive(currentTab == GalleryTab.Photos);
+            }
         }
 
         public void BindTabs(Button scansBtn, Button photosBtn, Image sBg, Image pBg, Text sTxt, Text pTxt, Text topTitle)
@@ -198,7 +217,7 @@ namespace ArtSimulator
             UpdateTabVisuals();
         }
 
-        public void BindUI(Transform contentContainer, Image previewImage, Text titleText, Button printBtn, Button homeBtn, Text statusText, Text emptyText, Text qtyText = null, Button decBtn = null, Button incBtn = null)
+        public void BindUI(Transform contentContainer, Image previewImage, Text titleText, Button printBtn, Button homeBtn, Text statusText, Text emptyText, Text qtyText = null, Button decBtn = null, Button incBtn = null, Button deleteBtn = null)
         {
             galleryContentContainer = contentContainer;
             selectedArtworkPreview = previewImage;
@@ -210,6 +229,7 @@ namespace ArtSimulator
             quantityText = qtyText;
             decreaseQtyButton = decBtn;
             increaseQtyButton = incBtn;
+            deletePhotoButton = deleteBtn;
 
             if (homeButton != null)
             {
@@ -231,6 +251,14 @@ namespace ArtSimulator
                 pt.SetAction("Imprimir Copia", OnPrintClicked);
             }
 
+            if (deletePhotoButton != null)
+            {
+                TabletButtonTrigger dt = deletePhotoButton.GetComponent<TabletButtonTrigger>() ?? deletePhotoButton.gameObject.AddComponent<TabletButtonTrigger>();
+                dt.SetAction("Eliminar Foto", OnDeletePhotoClicked);
+                deletePhotoButton.onClick.RemoveAllListeners();
+                deletePhotoButton.onClick.AddListener(() => dt.TriggerClick());
+            }
+
             if (decreaseQtyButton != null)
             {
                 decreaseQtyButton.onClick.RemoveAllListeners();
@@ -248,6 +276,7 @@ namespace ArtSimulator
             }
 
             UpdateQuantityUI();
+            UpdateTabVisuals();
         }
 
         private float lastQtyChangeTime = -1f;
@@ -303,9 +332,13 @@ namespace ArtSimulator
                 ? TabletManager.Instance.ScannedArtworks
                 : TabletManager.Instance.PhotoArtworks;
 
-            // Limpiar lista anterior
+            activeCards.Clear();
+            activeCardArtworks.Clear();
+
+            // Limpiar lista anterior de forma inmediata para evitar tarjetas residuales
             foreach (Transform child in galleryContentContainer)
             {
+                child.gameObject.SetActive(false);
                 SafeDestroy(child.gameObject);
             }
 
@@ -324,10 +357,14 @@ namespace ArtSimulator
                 selectedArtworkTitleText.gameObject.SetActive(hasArtworks);
             if (printButton != null)
                 printButton.interactable = hasArtworks;
+            if (deletePhotoButton != null)
+                deletePhotoButton.gameObject.SetActive(currentTab == GalleryTab.Photos && hasArtworks);
 
             if (!hasArtworks)
             {
                 currentSelectedArtwork = null;
+                if (deletePhotoButton != null)
+                    deletePhotoButton.gameObject.SetActive(false);
                 if (statusMessageText != null)
                 {
                     statusMessageText.text = (currentTab == GalleryTab.Scans)
@@ -341,7 +378,9 @@ namespace ArtSimulator
             for (int i = 0; i < artworks.Count; i++)
             {
                 ArtworkData art = artworks[i];
-                CreateThumbnailCard(art);
+                GameObject card = CreateThumbnailCard(art);
+                activeCards.Add(card);
+                activeCardArtworks.Add(art);
             }
 
             // Re-vincular la obra seleccionada para reflejar posibles actualizaciones de textura
@@ -448,6 +487,27 @@ namespace ArtSimulator
             {
                 statusMessageText.text = "Ilustración lista para imprimir";
             }
+
+            // Resaltar visualmente la tarjeta seleccionada en la cuadrícula
+            for (int i = 0; i < activeCards.Count; i++)
+            {
+                var card = activeCards[i];
+                if (card == null) continue;
+                var cardArt = (i < activeCardArtworks.Count) ? activeCardArtworks[i] : null;
+                bool isSelected = cardArt != null && (cardArt.id == currentSelectedArtwork.id || cardArt == currentSelectedArtwork);
+
+                Image bg = card.GetComponent<Image>();
+                if (bg != null)
+                {
+                    bg.color = isSelected ? new Color(0.12f, 0.48f, 0.95f) : Color.white;
+                }
+
+                Text lbl = card.transform.Find("Label")?.GetComponent<Text>();
+                if (lbl != null)
+                {
+                    lbl.color = isSelected ? Color.white : new Color(0.1f, 0.15f, 0.2f);
+                }
+            }
         }
 
         public void OnPrintClicked()
@@ -493,6 +553,53 @@ namespace ArtSimulator
                 {
                     statusMessageText.text = "⚠️ No se encontró la impresora.";
                 }
+            }
+        }
+
+        public void OnDeletePhotoClicked()
+        {
+            // Debounce para evitar ejecuciones duplicadas en el mismo clic
+            float now = Time.unscaledTime;
+            if (now - lastDeleteTime < 0.40f) return;
+            lastDeleteTime = now;
+
+            if (currentSelectedArtwork == null || currentTab != GalleryTab.Photos) return;
+            if (TabletManager.Instance == null) return;
+
+            ArtworkData toDelete = currentSelectedArtwork;
+            string title = toDelete.title;
+
+            // Determinar índice antes de eliminar para seleccionar la foto adyacente
+            var photos = TabletManager.Instance.PhotoArtworks;
+            int currentIndex = -1;
+            for (int i = 0; i < photos.Count; i++)
+            {
+                if (photos[i].id == toDelete.id || photos[i].title == toDelete.title)
+                {
+                    currentIndex = i;
+                    break;
+                }
+            }
+
+            // Desvincular temporalmente antes de invocar DeleteCapturedPhoto para evitar que eventos intermedios la re-seleccionen
+            currentSelectedArtwork = null;
+
+            bool deleted = TabletManager.Instance.DeleteCapturedPhoto(toDelete);
+            if (deleted)
+            {
+                if (statusMessageText != null)
+                {
+                    statusMessageText.text = $"🗑️ Foto '{title}' eliminada de la galería.";
+                }
+
+                var remaining = TabletManager.Instance.PhotoArtworks;
+                if (remaining != null && remaining.Count > 0)
+                {
+                    int nextIdx = Mathf.Clamp(currentIndex, 0, remaining.Count - 1);
+                    currentSelectedArtwork = remaining[nextIdx];
+                }
+
+                RefreshGallery();
             }
         }
 

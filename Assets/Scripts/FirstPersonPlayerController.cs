@@ -20,7 +20,6 @@ namespace ArtSimulator
         [Header("Movimiento")]
         [SerializeField] private float walkSpeed = 4.5f;
         [SerializeField] private float sprintSpeed = 7.0f;
-        [SerializeField] private float jumpHeight = 1.0f;
         [SerializeField] private float gravity = -18.0f;
 
         private CharacterController characterController;
@@ -101,15 +100,26 @@ namespace ArtSimulator
 
         private void Start()
         {
-            SetCursorLock(true);
-            if (TabletManager.Instance != null && !TabletManager.Instance.IsTabletOpen)
+            if (TabletManager.Instance != null)
             {
                 TabletManager.Instance.CloseTablet();
             }
+
+            SetCursorLock(true);
         }
 
         private void Update()
         {
+            // Si el juego está pausado, congelar controles y liberar cursor para el menú de pausa
+            if (MenuPausa.IsGamePaused)
+            {
+                if (isCursorLocked)
+                {
+                    SetCursorLock(false);
+                }
+                return;
+            }
+
             // Si estamos en Modo Dibujo activo
             if (isDrawingMode)
             {
@@ -138,7 +148,7 @@ namespace ArtSimulator
 
                     TabletCameraApp camApp = FindAnyObjectByType<TabletCameraApp>();
                     float zoomFactor = camApp != null ? camApp.CurrentZoomFactor : 1.0f;
-                    SetCameraPromptText($"📷 <b>CÁMARA</b>: [WASD] Moverte  •  [Espacio / C] Subir/Bajar  •  [Rueda / Q-E] Zoom ({zoomFactor:F1}x)  •  <b>[F / Enter / Clic]</b> Foto  •  [🏠 / H] Volver");
+                    SetCameraPromptText($"📷 <b>CÁMARA</b>: [WASD] Moverte  •  [Rueda / Q-E] Zoom ({zoomFactor:F1}x)  •  <b>[ESPACIO / F / Clic]</b> Tomar Foto  •  [🏠 / H] Volver");
                     HandleTabletShortcuts();
                     return;
                 }
@@ -153,8 +163,8 @@ namespace ArtSimulator
                 return;
             }
 
-            // Si la tableta está cerrada, asegurar que el cursor esté bloqueado para jugar
-            if (!isCursorLocked)
+            // Si la tableta está cerrada, asegurar que el cursor esté siempre bloqueado y oculto para jugar
+            if (!isCursorLocked || Cursor.lockState != CursorLockMode.Locked || Cursor.visible)
             {
                 SetCursorLock(true);
             }
@@ -285,14 +295,12 @@ namespace ArtSimulator
                 if (kb.dKey.isPressed) inputDir.x += 1f;
             }
             bool isSprinting = kb != null && kb.leftShiftKey.isPressed;
-            bool isJumpPressed = kb != null && kb.spaceKey.wasPressedThisFrame;
 #else
             if (Input.GetKey(KeyCode.W)) inputDir.z += 1f;
             if (Input.GetKey(KeyCode.S)) inputDir.z -= 1f;
             if (Input.GetKey(KeyCode.A)) inputDir.x -= 1f;
             if (Input.GetKey(KeyCode.D)) inputDir.x += 1f;
             bool isSprinting = Input.GetKey(KeyCode.LeftShift);
-            bool isJumpPressed = Input.GetKeyDown(KeyCode.Space);
 #endif
 
             float currentSpeed = isSprinting ? sprintSpeed : walkSpeed;
@@ -309,15 +317,7 @@ namespace ArtSimulator
             {
                 if (characterController.isGrounded)
                 {
-                    if (verticalVelocity < 0f)
-                    {
-                        verticalVelocity = -2f; // Mantener los pies pegados al suelo
-                    }
-
-                    if (isJumpPressed)
-                    {
-                        verticalVelocity = Mathf.Sqrt(jumpHeight * -2f * gravity);
-                    }
+                    verticalVelocity = -2f; // Mantener los pies pegados al suelo
                 }
                 else
                 {
@@ -355,6 +355,13 @@ namespace ArtSimulator
                 PrinterController targetedPrinter = GetTargetedPrinter(ray);
                 if (targetedPrinter != null)
                 {
+                    if (targetedPrinter.HasDrawingInside)
+                    {
+                        SetPromptText("🖨️ <b>Impresora ocupada</b> - Retira primero el dibujo en el escáner para insertar otro");
+                        SetReticleColor(new Color(1f, 0.6f, 0.1f));
+                        return;
+                    }
+
                     ScannableDrawing drawingToInsert = heldObject.GetComponentInChildren<ScannableDrawing>() 
                         ?? heldObject.GetComponentInParent<ScannableDrawing>();
                     string drawName = drawingToInsert != null ? drawingToInsert.GetArtworkData().title : "dibujo";
@@ -364,14 +371,12 @@ namespace ArtSimulator
 
                     if (isInteractPressed)
                     {
-                        if (heldCollider != null) heldCollider.enabled = true;
-                        heldObject = null;
-                        heldRigidbody = null;
-                        heldCollider = null;
-
-                        if (drawingToInsert != null)
+                        if (drawingToInsert != null && targetedPrinter.InsertDrawing(drawingToInsert))
                         {
-                            targetedPrinter.InsertDrawing(drawingToInsert);
+                            if (heldCollider != null) heldCollider.enabled = true;
+                            heldObject = null;
+                            heldRigidbody = null;
+                            heldCollider = null;
                         }
                     }
                     return;
@@ -380,17 +385,29 @@ namespace ArtSimulator
                 SendProduct targetedSendBox = GetTargetedSendZone(ray);
                 if (targetedSendBox != null)
                 {
+                    ScannableDrawing drawingHeld = heldObject.GetComponentInChildren<ScannableDrawing>()
+                        ?? heldObject.GetComponentInParent<ScannableDrawing>();
+
+                    if (drawingHeld != null && drawingHeld.IsOriginal)
+                    {
+                        SetPromptText("⚠️ <b>Caja de Envíos</b> - Es un dibujo ORIGINAL. ¡Solo debes enviar copias impresas!");
+                        SetReticleColor(new Color(1f, 0.5f, 0f));
+                        return;
+                    }
+
                     SetPromptText("📦 <b>Caja de Envíos</b> - <b>[Clic Izquierdo]</b> o pulsa <b>[E]</b> para entregar al pedido");
                     SetReticleColor(Color.green);
 
                     if (isInteractPressed)
                     {
                         GameObject objToDeliver = heldObject.gameObject;
-                        heldObject = null;
-                        heldRigidbody = null;
-                        heldCollider = null;
-
-                        targetedSendBox.ProcessDeliveredObject(objToDeliver);
+                        bool delivered = targetedSendBox.ProcessDeliveredObject(objToDeliver);
+                        if (delivered)
+                        {
+                            heldObject = null;
+                            heldRigidbody = null;
+                            heldCollider = null;
+                        }
                     }
                     return;
                 }

@@ -484,8 +484,14 @@ namespace ArtSimulator
             cameraApp.BindUI(vfImg, shutterBtn, homeBtn, flashImg, zInBtn, zOutBtn, zoomTxt);
 
             TabletCameraApp localCam = cameraApp;
-            TabletButtonTrigger stTrig = shutterObj.AddComponent<TabletButtonTrigger>();
+            TabletButtonTrigger stTrig = shutterObj.GetComponent<TabletButtonTrigger>() ?? shutterObj.AddComponent<TabletButtonTrigger>();
             stTrig.SetAction("Disparar Foto", () => localCam?.TakePhoto());
+
+            TabletButtonTrigger zinTrig = zInObj.GetComponent<TabletButtonTrigger>() ?? zInObj.AddComponent<TabletButtonTrigger>();
+            zinTrig.SetAction("Zoom +", () => localCam?.ZoomIn());
+
+            TabletButtonTrigger zoutTrig = zOutObj.GetComponent<TabletButtonTrigger>() ?? zOutObj.AddComponent<TabletButtonTrigger>();
+            zoutTrig.SetAction("Zoom -", () => localCam?.ZoomOut());
 
             return panel;
         }
@@ -533,11 +539,11 @@ namespace ArtSimulator
             titRt.offsetMax = Vector2.zero;
             titleTxt.raycastTarget = false;
 
-            // Botón IMPRIMIR COPIA (Totalmente visible y accesible)
+            // Botón IMPRIMIR COPIA
             GameObject printObj = CreateUIElement("PrintButton", previewPanel.transform);
             RectTransform prRt = printObj.GetComponent<RectTransform>();
             prRt.anchorMin = new Vector2(0.06f, 0.14f);
-            prRt.anchorMax = new Vector2(0.94f, 0.25f);
+            prRt.anchorMax = new Vector2(0.68f, 0.25f);
             prRt.offsetMin = Vector2.zero;
             prRt.offsetMax = Vector2.zero;
 
@@ -550,9 +556,30 @@ namespace ArtSimulator
 
             TabletButtonTrigger ptTrig = printObj.AddComponent<TabletButtonTrigger>();
 
-            Text printLbl = CreateText("PrintLabel", printObj.transform, "🖨️ IMPRIMIR COPIA FÍSICA", 16, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+            Text printLbl = CreateText("PrintLabel", printObj.transform, "🖨️ IMPRIMIR", 15, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
             SetFullStretch(printLbl.gameObject);
             printLbl.raycastTarget = false;
+
+            // Botón ELIMINAR FOTO
+            GameObject delObj = CreateUIElement("DeletePhotoButton", previewPanel.transform);
+            RectTransform delRt = delObj.GetComponent<RectTransform>();
+            delRt.anchorMin = new Vector2(0.72f, 0.14f);
+            delRt.anchorMax = new Vector2(0.94f, 0.25f);
+            delRt.offsetMin = Vector2.zero;
+            delRt.offsetMax = Vector2.zero;
+
+            Image delImg = delObj.AddComponent<Image>();
+            delImg.color = new Color(0.86f, 0.20f, 0.20f);
+            delImg.raycastTarget = true;
+
+            Button deleteBtn = delObj.AddComponent<Button>();
+            deleteBtn.targetGraphic = delImg;
+
+            TabletButtonTrigger delTrig = delObj.AddComponent<TabletButtonTrigger>();
+
+            Text delLbl = CreateText("DeleteLabel", delObj.transform, "🗑️ BORRAR", 14, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+            SetFullStretch(delLbl.gameObject);
+            delLbl.raycastTarget = false;
 
             // Selector de Cantidad de Copias (Mín 1, Máx 10) ABAJO del botón de impresión
             GameObject qtyBarObj = CreateUIElement("QuantitySelectorBar", previewPanel.transform);
@@ -675,11 +702,12 @@ namespace ArtSimulator
             Text topTitleText = topBar.GetComponentInChildren<Text>();
 
             galleryApp = panel.AddComponent<TabletGalleryApp>();
-            galleryApp.BindUI(contentContainer, artImg, titleTxt, printBtn, homeBtn, statusTxt, emptyTxt, qtyLabel, decBtn, incBtn);
+            galleryApp.BindUI(contentContainer, artImg, titleTxt, printBtn, homeBtn, statusTxt, emptyTxt, qtyLabel, decBtn, incBtn, deleteBtn);
             galleryApp.BindTabs(scansTabBtn, photosTabBtn, scansTabBg, photosTabBg, scansTabTxt, photosTabTxt, topTitleText);
 
             TabletGalleryApp localGallery = galleryApp;
             ptTrig.SetAction("Imprimir Copia", () => localGallery?.OnPrintClicked());
+            delTrig.SetAction("Eliminar Foto", () => localGallery?.OnDeletePhotoClicked());
             decTrig.SetAction("Menos Copias", () => localGallery?.DecreaseQuantity());
             incTrig.SetAction("Más Copias", () => localGallery?.IncreaseQuantity());
 
@@ -743,6 +771,24 @@ namespace ArtSimulator
             SetFullStretch(tabOrdersLabel.gameObject);
             tabOrdersLabel.raycastTarget = false;
 
+            // Badge visual de dinero disponible del jugador
+            GameObject moneyBadgeObj = CreateUIElement("MoneyBadge", storeHeader.transform);
+            RectTransform mbRt = moneyBadgeObj.GetComponent<RectTransform>();
+            mbRt.anchorMin = new Vector2(0.48f, 0.14f);
+            mbRt.anchorMax = new Vector2(0.74f, 0.86f);
+            mbRt.offsetMin = Vector2.zero;
+            mbRt.offsetMax = Vector2.zero;
+
+            Image mbImg = moneyBadgeObj.AddComponent<Image>();
+            mbImg.color = new Color(0.93f, 0.98f, 0.94f);
+            var mbOutline = moneyBadgeObj.AddComponent<Outline>();
+            mbOutline.effectColor = new Color(0.18f, 0.65f, 0.32f, 0.45f);
+            mbOutline.effectDistance = new Vector2(1.5f, -1.5f);
+
+            Text moneyText = CreateText("MoneyText", moneyBadgeObj.transform, "💰 $0", 15, FontStyle.Bold, new Color(0.08f, 0.52f, 0.22f), TextAnchor.MiddleCenter);
+            SetFullStretch(moneyText.gameObject);
+            moneyText.raycastTarget = false;
+
             // BOTÓN DESTACADO PARA VOLVER AL MENÚ PRINCIPAL (← 🏠 VOLVER)
             Button homeBtn = CreateReturnButton(storeHeader.transform, new Vector2(0.98f, 0.5f), new Vector2(0.98f, 0.5f), new Vector2(160, 44));
 
@@ -762,7 +808,7 @@ namespace ArtSimulator
                 tabStoreBtn, tabOrdersBtn, tabStoreLabel, tabOrdersLabel, homeBtn,
                 storePanel, ordersPanel, storeContent, ordersContent,
                 modalObj, pickerContent, previewImg, priceTxt, nameTxt,
-                minusBtn, plusBtn, publishBtn, closeBtn, errorTxt
+                minusBtn, plusBtn, publishBtn, closeBtn, errorTxt, moneyText
             );
 
             TabletStoreApp localStore = storeApp;

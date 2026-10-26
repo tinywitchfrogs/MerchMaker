@@ -227,6 +227,16 @@ namespace ArtSimulator
                 }
             });
 
+            SetupButton(canvasObj.transform, "TabletDeviceFrame/ScreenArea/ImagesScreen/PreviewPanel/DeletePhotoButton", "Eliminar Foto", () =>
+            {
+                if (galleryApp != null) galleryApp.OnDeletePhotoClicked();
+                else if (imagesScreenPanel != null)
+                {
+                    var g = imagesScreenPanel.GetComponent<TabletGalleryApp>();
+                    if (g != null) g.OnDeletePhotoClicked();
+                }
+            });
+
             // Pestañas de Galería (Escaneos vs Fotos)
             SetupButton(canvasObj.transform, "TabletDeviceFrame/ScreenArea/ImagesScreen/GalleryTabBar/ScansTab", "Ver Escaneos", () =>
             {
@@ -240,7 +250,7 @@ namespace ArtSimulator
                 else if (imagesScreenPanel != null) imagesScreenPanel.GetComponent<TabletGalleryApp>()?.SwitchTab(GalleryTab.Photos);
             });
 
-            // 5. Botón Disparador en Pantalla de Cámara
+            // 5. Botones de Cámara (Disparador y Zoom)
             SetupButton(canvasObj.transform, "TabletDeviceFrame/ScreenArea/CameraScreen/CameraControls/ShutterButton", "Capturar Foto", () =>
             {
                 if (cameraApp != null) cameraApp.TakePhoto();
@@ -248,6 +258,26 @@ namespace ArtSimulator
                 {
                     var c = cameraScreenPanel.GetComponent<TabletCameraApp>();
                     if (c != null) c.TakePhoto();
+                }
+            });
+
+            SetupButton(canvasObj.transform, "TabletDeviceFrame/ScreenArea/CameraScreen/CameraControls/ZoomControls/ZoomInBtn", "Zoom +", () =>
+            {
+                if (cameraApp != null) cameraApp.ZoomIn();
+                else if (cameraScreenPanel != null)
+                {
+                    var c = cameraScreenPanel.GetComponent<TabletCameraApp>();
+                    if (c != null) c.ZoomIn();
+                }
+            });
+
+            SetupButton(canvasObj.transform, "TabletDeviceFrame/ScreenArea/CameraScreen/CameraControls/ZoomControls/ZoomOutBtn", "Zoom -", () =>
+            {
+                if (cameraApp != null) cameraApp.ZoomOut();
+                else if (cameraScreenPanel != null)
+                {
+                    var c = cameraScreenPanel.GetComponent<TabletCameraApp>();
+                    if (c != null) c.ZoomOut();
                 }
             });
 
@@ -296,14 +326,14 @@ namespace ArtSimulator
                 btn.targetGraphic = img;
             }
 
-            // Delegado Button.onClick nativo
-            btn.onClick.RemoveAllListeners();
-            btn.onClick.AddListener(() => callback?.Invoke());
-
             // Componente directo IPointerClickHandler para inmunidad ante pérdida de estado
             TabletButtonTrigger trigger = btn.GetComponent<TabletButtonTrigger>();
             if (trigger == null) trigger = btn.gameObject.AddComponent<TabletButtonTrigger>();
             trigger.SetAction(actionName, callback);
+
+            // Delegado Button.onClick nativo canalizado a través del trigger para deduplicación
+            btn.onClick.RemoveAllListeners();
+            btn.onClick.AddListener(() => trigger.TriggerClick());
         }
 
         public void SetReferences(

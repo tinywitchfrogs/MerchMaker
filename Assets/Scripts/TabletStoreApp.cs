@@ -32,6 +32,9 @@ namespace ArtSimulator
         [SerializeField] private Button btnCloseModal;
         [SerializeField] private Text modalErrorText;
 
+        [Header("Economía y Saldo")]
+        [SerializeField] private Text moneyDisplayText;
+
         [Header("Configuración de Pedidos Automáticos")]
         [SerializeField] private float orderCheckInterval = 15f;
         [SerializeField] private int maxActiveOrders = 6;
@@ -45,11 +48,18 @@ namespace ArtSimulator
         {
             SetupTabButtons();
             SetupModalButtons();
+            SetupMoneyDisplay();
 
             if (TabletManager.Instance != null)
             {
                 TabletManager.Instance.OnProductsChanged += RefreshStoreProducts;
                 TabletManager.Instance.OnOrdersChanged += RefreshOrdersList;
+            }
+
+            if (PlayerEconomy.Instance != null)
+            {
+                PlayerEconomy.Instance.OnMoneyChanged -= UpdateMoneyDisplay;
+                PlayerEconomy.Instance.OnMoneyChanged += UpdateMoneyDisplay;
             }
 
             SelectStoreTab();
@@ -64,12 +74,92 @@ namespace ArtSimulator
                 TabletManager.Instance.OnProductsChanged -= RefreshStoreProducts;
                 TabletManager.Instance.OnOrdersChanged -= RefreshOrdersList;
             }
+
+            if (PlayerEconomy.Instance != null)
+            {
+                PlayerEconomy.Instance.OnMoneyChanged -= UpdateMoneyDisplay;
+            }
         }
 
         private void OnEnable()
         {
+            SetupMoneyDisplay();
             RefreshStoreProducts();
             RefreshOrdersList();
+        }
+
+        public void SetupMoneyDisplay()
+        {
+            if (moneyDisplayText == null)
+            {
+                // Buscar si ya existe en la jerarquía del encabezado
+                Transform header = transform.Find("StoreHeader") 
+                    ?? (storePanel != null && storePanel.transform.parent != null ? storePanel.transform.parent.Find("StoreHeader") : null);
+
+                if (header == null)
+                {
+                    Transform t = transform;
+                    while (t != null && header == null)
+                    {
+                        var found = t.Find("StoreHeader");
+                        if (found != null) header = found;
+                        t = t.parent;
+                    }
+                }
+
+                if (header != null)
+                {
+                    Transform existingBadge = header.Find("MoneyBadge");
+                    if (existingBadge != null)
+                    {
+                        moneyDisplayText = existingBadge.GetComponentInChildren<Text>();
+                    }
+                    else
+                    {
+                        // Crear el badge de dinero en el header de la tienda
+                        GameObject badge = new GameObject("MoneyBadge", typeof(RectTransform), typeof(Image));
+                        badge.transform.SetParent(header, false);
+                        RectTransform brt = badge.GetComponent<RectTransform>();
+                        brt.anchorMin = new Vector2(0.48f, 0.14f);
+                        brt.anchorMax = new Vector2(0.74f, 0.86f);
+                        brt.offsetMin = Vector2.zero;
+                        brt.offsetMax = Vector2.zero;
+
+                        Image bImg = badge.GetComponent<Image>();
+                        bImg.color = new Color(0.93f, 0.98f, 0.94f); // Fondo verde menta elegante
+                        var outline = badge.AddComponent<Outline>();
+                        outline.effectColor = new Color(0.18f, 0.65f, 0.32f, 0.45f);
+                        outline.effectDistance = new Vector2(1.5f, -1.5f);
+
+                        GameObject txtObj = new GameObject("MoneyText", typeof(RectTransform), typeof(Text));
+                        txtObj.transform.SetParent(badge.transform, false);
+                        RectTransform trt = txtObj.GetComponent<RectTransform>();
+                        trt.anchorMin = Vector2.zero;
+                        trt.anchorMax = Vector2.one;
+                        trt.offsetMin = Vector2.zero;
+                        trt.offsetMax = Vector2.zero;
+
+                        moneyDisplayText = txtObj.GetComponent<Text>();
+                        moneyDisplayText.font = UIFontHelper.GetDefaultFont();
+                        moneyDisplayText.fontSize = 15;
+                        moneyDisplayText.fontStyle = FontStyle.Bold;
+                        moneyDisplayText.alignment = TextAnchor.MiddleCenter;
+                        moneyDisplayText.color = new Color(0.08f, 0.52f, 0.22f); // Verde dinero
+                        moneyDisplayText.raycastTarget = false;
+                    }
+                }
+            }
+
+            int currentMoney = PlayerEconomy.Instance != null ? PlayerEconomy.Instance.dinero : 0;
+            UpdateMoneyDisplay(currentMoney);
+        }
+
+        public void UpdateMoneyDisplay(int currentMoney)
+        {
+            if (moneyDisplayText != null)
+            {
+                moneyDisplayText.text = $"💰 ${currentMoney:N0}";
+            }
         }
 
         private void SetupTabButtons()
@@ -585,7 +675,7 @@ namespace ArtSimulator
             Button tabStore, Button tabOrders, Text labelStore, Text labelOrders, Button home,
             GameObject panelStore, GameObject panelOrders, Transform containerStore, Transform containerOrders,
             GameObject modal, Transform pickerContent, Image preview, Text priceTxt, Text nameTxt,
-            Button minusBtn, Button plusBtn, Button publishBtn, Button closeBtn, Text errorTxt)
+            Button minusBtn, Button plusBtn, Button publishBtn, Button closeBtn, Text errorTxt, Text moneyTxt = null)
         {
             tabStoreButton = tabStore;
             tabOrdersButton = tabOrders;
@@ -608,9 +698,11 @@ namespace ArtSimulator
             btnPublishProduct = publishBtn;
             btnCloseModal = closeBtn;
             modalErrorText = errorTxt;
+            if (moneyTxt != null) moneyDisplayText = moneyTxt;
 
             SetupTabButtons();
             SetupModalButtons();
+            SetupMoneyDisplay();
         }
     }
 }
