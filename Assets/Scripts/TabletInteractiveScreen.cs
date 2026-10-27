@@ -27,24 +27,9 @@ namespace ArtSimulator
 
             tableCollider.isTrigger = false;
 
-            // Ajustar tamaño del collider a los bounds del modelo
-            Renderer[] renderers = GetComponentsInChildren<Renderer>();
-            if (renderers.Length > 0)
-            {
-                Bounds b = renderers[0].bounds;
-                for (int i = 1; i < renderers.Length; i++)
-                {
-                    b.Encapsulate(renderers[i].bounds);
-                }
-
-                tableCollider.center = transform.InverseTransformPoint(b.center);
-                Vector3 localSize = transform.InverseTransformVector(b.size);
-                tableCollider.size = new Vector3(
-                    Mathf.Max(0.2f, Mathf.Abs(localSize.x)),
-                    Mathf.Max(0.1f, Mathf.Abs(localSize.y)),
-                    Mathf.Max(0.2f, Mathf.Abs(localSize.z))
-                );
-            }
+            // Ajustar centro y tamaño del collider con precisión milimétrica al modelo físico
+            tableCollider.center = new Vector3(0.09f, 5.87f, -0.43f);
+            tableCollider.size = new Vector3(6.5f, 10.5f, 1.2f);
 
             // 2. Darle aspecto de pantalla iluminada a la Pantalla 3D en la mesa
             if (screenMeshTransform == null)

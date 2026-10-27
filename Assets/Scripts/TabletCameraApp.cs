@@ -31,6 +31,7 @@ namespace ArtSimulator
 
         private RenderTexture cameraRenderTexture;
         private AudioSource audioSource;
+        private bool prevVRShotPressed = false;
 
         private void Awake()
         {
@@ -129,12 +130,20 @@ namespace ArtSimulator
 
             if (tabletCamera == null)
             {
-                GameObject camObj = new GameObject("TabletViewCamera");
-                tabletCamera = camObj.AddComponent<Camera>();
+                GameObject camObj = GameObject.Find("TabletViewCamera");
+                if (camObj == null)
+                {
+                    camObj = new GameObject("TabletViewCamera");
+                }
+                tabletCamera = camObj.GetComponent<Camera>();
+                if (tabletCamera == null)
+                {
+                    tabletCamera = camObj.AddComponent<Camera>();
+                }
                 tabletCamera.clearFlags = CameraClearFlags.Skybox;
                 tabletCamera.fieldOfView = defaultFOV;
-                tabletCamera.nearClipPlane = 0.05f;
-                tabletCamera.cullingMask = ~0; // Todo excepto UI si es posible
+                tabletCamera.nearClipPlane = 0.03f;
+                tabletCamera.cullingMask = ~0; // Renderizar todo excepto UI
                 int uiLayer = LayerMask.NameToLayer("UI");
                 if (uiLayer >= 0)
                 {
@@ -147,17 +156,39 @@ namespace ArtSimulator
             if (viewfinderDisplay != null)
             {
                 viewfinderDisplay.texture = cameraRenderTexture;
+                // Escala horizontal invertida (-1) para contrarrestar la escala negativa del lienzo padre
+                viewfinderDisplay.rectTransform.localScale = new Vector3(-1f, 1f, 1f);
             }
         }
 
         private void LateUpdate()
         {
-            // Sincronizar posición y orientación en tiempo real con la cabeza / vista del jugador
-            Camera mainCam = Camera.main;
-            if (tabletCamera != null && mainCam != null)
+            if (tabletCamera == null) return;
+
+            // Sincronizar posición y orientación en tiempo real con el lente trasero de la tableta física
+            GameObject tableta = GameObject.Find("Tableta");
+            Transform pantalla = tableta != null ? (tableta.transform.Find("ModeloTableta/Pantalla") ?? tableta.transform.Find("Pantalla")) : null;
+            Transform camLens = tableta != null ? (tableta.transform.Find("ModeloTableta/Camara") ?? tableta.transform.Find("Camara")) : null;
+
+            if (tableta != null && pantalla != null)
             {
-                tabletCamera.transform.position = mainCam.transform.position;
-                tabletCamera.transform.rotation = mainCam.transform.rotation;
+                // La cámara física se ubica en el lente trasero y apunta hacia donde apunta la parte posterior de la tableta
+                Vector3 lensPos = camLens != null ? camLens.position : (pantalla.position - pantalla.forward * 0.05f);
+                Vector3 cameraForward = -pantalla.forward; // Dirección hacia donde apunta la parte trasera de la tableta
+                Vector3 cameraUp = -pantalla.up; // Orientado con el borde superior de la tableta
+
+                tabletCamera.transform.position = lensPos;
+                tabletCamera.transform.rotation = Quaternion.LookRotation(cameraForward, cameraUp);
+            }
+            else
+            {
+                // Fallback para modo PC clásico sin tableta física en escena
+                Camera mainCam = Camera.main;
+                if (mainCam != null)
+                {
+                    tabletCamera.transform.position = mainCam.transform.position;
+                    tabletCamera.transform.rotation = mainCam.transform.rotation;
+                }
             }
         }
 
@@ -168,35 +199,55 @@ namespace ArtSimulator
             HandleZoomInput();
             UpdateCameraZoom();
 
+            bool shotTriggered = false;
+
 #if ENABLE_INPUT_SYSTEM
             var kb = UnityEngine.InputSystem.Keyboard.current;
             var mouse = UnityEngine.InputSystem.Mouse.current;
             if (kb != null && (kb.spaceKey.wasPressedThisFrame || kb.fKey.wasPressedThisFrame || kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame))
             {
-                TakePhoto();
+                shotTriggered = true;
             }
             else if (mouse != null && mouse.leftButton.wasPressedThisFrame)
             {
                 bool isOverUI = UnityEngine.EventSystems.EventSystem.current != null && UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject();
                 if (!isOverUI)
                 {
-                    TakePhoto();
+                    shotTriggered = true;
                 }
             }
 #else
             if (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.F) || Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
             {
-                TakePhoto();
+                shotTriggered = true;
             }
             else if (Input.GetMouseButtonDown(0))
             {
                 bool isOverUI = UnityEngine.EventSystems.EventSystem.current != null && UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject();
                 if (!isOverUI)
                 {
-                    TakePhoto();
+                    shotTriggered = true;
                 }
             }
 #endif
+
+            // Detección directa en mandos VR (Botón primario A/X para disparar foto rápidamente)
+            var rightHand = UnityEngine.XR.InputDevices.GetDeviceAtXRNode(UnityEngine.XR.XRNode.RightHand);
+            bool vrBtn = false;
+            if (rightHand.isValid && rightHand.TryGetFeatureValue(UnityEngine.XR.CommonUsages.primaryButton, out bool aPressed))
+            {
+                vrBtn = aPressed;
+            }
+            if (vrBtn && !prevVRShotPressed)
+            {
+                shotTriggered = true;
+            }
+            prevVRShotPressed = vrBtn;
+
+            if (shotTriggered)
+            {
+                TakePhoto();
+            }
         }
 
         private void HandleZoomInput()
@@ -275,9 +326,10 @@ namespace ArtSimulator
             zoomOutButton = zoomOut;
             zoomIndicatorText = zoomText;
 
-            if (viewfinderDisplay != null && cameraRenderTexture != null)
+            if (viewfinderDisplay != null)
             {
-                viewfinderDisplay.texture = cameraRenderTexture;
+                if (cameraRenderTexture != null) viewfinderDisplay.texture = cameraRenderTexture;
+                viewfinderDisplay.rectTransform.localScale = new Vector3(-1f, 1f, 1f);
             }
 
             if (shutterButton != null)
@@ -332,6 +384,11 @@ namespace ArtSimulator
             if (zoomIndicatorText != null)
             {
                 zoomIndicatorText.text = "1.0x";
+            }
+
+            if (viewfinderDisplay != null)
+            {
+                viewfinderDisplay.rectTransform.localScale = new Vector3(-1f, 1f, 1f);
             }
 
             // Ocultar auras de dibujos para que no aparezcan en el visor ni en las fotos

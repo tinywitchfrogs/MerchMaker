@@ -80,16 +80,11 @@ namespace ArtSimulator
 
         private void SetPhysicalTabletVisuals(bool visible)
         {
-            // En Realidad Virtual la tableta física se sostiene en la mano del jugador: NUNCA se oculta
-            if (XRPlayerRigManager.Instance != null && XRPlayerRigManager.Instance.IsVRActive)
-            {
-                visible = true;
-            }
-
+            // La tableta física 3D permanece siempre visible sobre la mesa o en la mano
             Renderer[] renderers = GetComponentsInChildren<Renderer>(true);
             for (int i = 0; i < renderers.Length; i++)
             {
-                renderers[i].enabled = visible;
+                renderers[i].enabled = true;
             }
         }
 
@@ -97,16 +92,7 @@ namespace ArtSimulator
         {
             isTabletOpen = true;
             OnTabletOpenStateChanged?.Invoke(true);
-
-            bool isVR = XRPlayerRigManager.Instance != null && XRPlayerRigManager.Instance.IsVRActive;
-            if (!isVR)
-            {
-                SetPhysicalTabletVisuals(false); // Solo en modo escritorio antiguo se ocultaba
-            }
-            else
-            {
-                SetPhysicalTabletVisuals(true); // En VR siempre visible en la mano
-            }
+            SetPhysicalTabletVisuals(true);
 
             var ui = GetComponent<TabletUIController>() ?? FindAnyObjectByType<TabletUIController>();
             if (ui != null)
@@ -140,31 +126,11 @@ namespace ArtSimulator
             if (ui != null)
             {
                 var c = ui.GetTabletCanvasObject();
-                bool isVR = XRPlayerRigManager.Instance != null && XRPlayerRigManager.Instance.IsVRActive;
-                if (!isVR && c != null)
+                if (c != null)
                 {
-                    c.SetActive(false);
+                    c.SetActive(true);
                 }
-                else if (isVR)
-                {
-                    ui.UpdateActiveScreen(TabletScreen.Home);
-                }
-            }
-            else
-            {
-                bool isVR = XRPlayerRigManager.Instance != null && XRPlayerRigManager.Instance.IsVRActive;
-                if (!isVR)
-                {
-                    var canvases = Resources.FindObjectsOfTypeAll<Canvas>();
-                    for (int i = 0; i < canvases.Length; i++)
-                    {
-                        if (canvases[i].name == "TabletCanvas")
-                        {
-                            canvases[i].gameObject.SetActive(false);
-                            break;
-                        }
-                    }
-                }
+                ui.UpdateActiveScreen(TabletScreen.Home);
             }
         }
 
@@ -202,7 +168,16 @@ namespace ArtSimulator
             }
             SetPhysicalTabletVisuals(true);
             currentScreen = TabletScreen.Home;
-            CloseTablet(); // La tableta debe iniciar cerrada sobre la mesa de trabajo
+            bool isVR = XRPlayerRigManager.Instance != null && XRPlayerRigManager.Instance.IsVRActive;
+            if (isVR)
+            {
+                OpenTablet();
+                ShowHome();
+            }
+            else
+            {
+                CloseTablet();
+            }
         }
 
         private void OnDestroy()

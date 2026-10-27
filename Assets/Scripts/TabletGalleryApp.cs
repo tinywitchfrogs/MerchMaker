@@ -438,6 +438,7 @@ namespace ArtSimulator
             thumb.sprite = art.GetSprite();
             thumb.preserveAspect = true;
             thumb.raycastTarget = false;
+            imgRt.localScale = new Vector3(-1f, 1f, 1f);
 
             // Texto título
             GameObject textObj = new GameObject("Label", typeof(RectTransform), typeof(Text));

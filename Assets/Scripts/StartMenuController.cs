@@ -8,22 +8,33 @@ public class StartMenuController : MonoBehaviour
 {
     private RectTransform playButtonRect;
     private RectTransform quitButtonRect;
+    private float sceneLoadTime = 0f;
 
     private void Awake()
     {
         if (SceneManager.GetActiveScene().name != "MenuInicio") return;
+        sceneLoadTime = Time.unscaledTime;
         Time.timeScale = 1f;
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
+        if (UnityEngine.EventSystems.EventSystem.current != null)
+        {
+            UnityEngine.EventSystems.EventSystem.current.SetSelectedGameObject(null);
+        }
         SetupButtons();
     }
 
     private void Start()
     {
         if (SceneManager.GetActiveScene().name != "MenuInicio") return;
+        sceneLoadTime = Time.unscaledTime;
         Time.timeScale = 1f;
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
+        if (UnityEngine.EventSystems.EventSystem.current != null)
+        {
+            UnityEngine.EventSystems.EventSystem.current.SetSelectedGameObject(null);
+        }
         SetupButtons();
     }
 
@@ -73,6 +84,9 @@ public class StartMenuController : MonoBehaviour
     private void Update()
     {
         if (SceneManager.GetActiveScene().name != "MenuInicio") return;
+
+        // Evitar que pulsaciones de la escena anterior activen el botón inmediatamente
+        if (Time.unscaledTime - sceneLoadTime < 0.6f) return;
 
         // Soporte teclado: Enter para Iniciar, Escape para Salir
 #if ENABLE_INPUT_SYSTEM
@@ -134,6 +148,7 @@ public class StartMenuController : MonoBehaviour
 
     public void OnStartClick()
     {
+        if (Time.unscaledTime - sceneLoadTime < 0.6f) return;
         Time.timeScale = 1f;
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;

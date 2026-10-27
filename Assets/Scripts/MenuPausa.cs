@@ -1,5 +1,8 @@
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.XR;
+using UnityEngine.XR.Interaction.Toolkit.UI;
+using InputDevice = UnityEngine.XR.InputDevice;
 #if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
 #endif
@@ -12,6 +15,7 @@ public class MenuPausa : MonoBehaviour
 
     [SerializeField] private GameObject pauseMenu;
     public bool isPaused = false;
+    private bool prevVRMenuPressed = false;
 
     private void Awake()
     {
@@ -55,7 +59,29 @@ public class MenuPausa : MonoBehaviour
 
         if (pauseMenu != null)
         {
-            pauseMenu.transform.localScale = Vector3.one;
+            var rt = pauseMenu.GetComponent<RectTransform>();
+            if (rt != null)
+            {
+                rt.pivot = new Vector2(0.5f, 0.5f);
+                rt.sizeDelta = new Vector2(850f, 600f);
+            }
+
+            var panel = pauseMenu.transform.Find("Panel")?.GetComponent<RectTransform>();
+            if (panel != null)
+            {
+                panel.anchorMin = Vector2.zero;
+                panel.anchorMax = Vector2.one;
+                panel.offsetMin = Vector2.zero;
+                panel.offsetMax = Vector2.zero;
+                panel.pivot = new Vector2(0.5f, 0.5f);
+            }
+
+            bool isVR = ArtSimulator.XRPlayerRigManager.Instance != null && ArtSimulator.XRPlayerRigManager.Instance.IsVRActive;
+            if (!isVR)
+            {
+                pauseMenu.transform.localScale = Vector3.one;
+            }
+
             var canvas = pauseMenu.GetComponent<Canvas>();
             if (canvas != null)
             {
@@ -63,10 +89,32 @@ public class MenuPausa : MonoBehaviour
                 canvas.sortingOrder = 1000;
             }
 
+            // Raycaster para controles VR (Meta Quest 2 / OpenXR)
+            var tdRay = pauseMenu.GetComponent<TrackedDeviceGraphicRaycaster>();
+            if (tdRay == null) tdRay = pauseMenu.AddComponent<TrackedDeviceGraphicRaycaster>();
+            if (tdRay != null) tdRay.ignoreReversedGraphics = false;
+
+            // Raycaster estándar para clics de ratón en Editor y PC
+            var gr = pauseMenu.GetComponent<UnityEngine.UI.GraphicRaycaster>();
+            if (gr != null)
+            {
+                gr.ignoreReversedGraphics = false;
+                gr.blockingObjects = UnityEngine.UI.GraphicRaycaster.BlockingObjects.None;
+            }
+
             // Desactivar raycastTarget en todos los textos y títulos para que nunca bloqueen clics en los botones
             var tp = pauseMenu.transform.Find("TextPausa");
             if (tp != null)
             {
+                var tpRt = tp.GetComponent<RectTransform>();
+                if (tpRt != null)
+                {
+                    tpRt.anchorMin = new Vector2(0.5f, 0.5f);
+                    tpRt.anchorMax = new Vector2(0.5f, 0.5f);
+                    tpRt.pivot = new Vector2(0.5f, 0.5f);
+                    tpRt.anchoredPosition = new Vector2(0, 180f);
+                    tpRt.sizeDelta = new Vector2(600f, 70f);
+                }
                 var tpGr = tp.GetComponent<UnityEngine.UI.Graphic>();
                 if (tpGr != null) tpGr.raycastTarget = false;
                 var tpTmp = tp.GetComponent<TMPro.TMP_Text>();
@@ -77,6 +125,15 @@ public class MenuPausa : MonoBehaviour
             if (resumeBtn != null)
             {
                 resumeBtn.interactable = true;
+                var rRt = resumeBtn.GetComponent<RectTransform>();
+                if (rRt != null)
+                {
+                    rRt.anchorMin = new Vector2(0.5f, 0.5f);
+                    rRt.anchorMax = new Vector2(0.5f, 0.5f);
+                    rRt.pivot = new Vector2(0.5f, 0.5f);
+                    rRt.anchoredPosition = new Vector2(0, 70f);
+                    rRt.sizeDelta = new Vector2(360f, 60f);
+                }
                 var img = resumeBtn.GetComponent<UnityEngine.UI.Image>();
                 if (img != null) img.raycastTarget = true;
                 var tmp = resumeBtn.GetComponentInChildren<TMPro.TMP_Text>();
@@ -92,6 +149,15 @@ public class MenuPausa : MonoBehaviour
             if (homeBtn != null)
             {
                 homeBtn.interactable = true;
+                var hRt = homeBtn.GetComponent<RectTransform>();
+                if (hRt != null)
+                {
+                    hRt.anchorMin = new Vector2(0.5f, 0.5f);
+                    hRt.anchorMax = new Vector2(0.5f, 0.5f);
+                    hRt.pivot = new Vector2(0.5f, 0.5f);
+                    hRt.anchoredPosition = new Vector2(0, -90f);
+                    hRt.sizeDelta = new Vector2(360f, 60f);
+                }
                 var img = homeBtn.GetComponent<UnityEngine.UI.Image>();
                 if (img != null) img.raycastTarget = true;
                 var tmp = homeBtn.GetComponentInChildren<TMPro.TMP_Text>();
@@ -116,12 +182,14 @@ public class MenuPausa : MonoBehaviour
             {
                 var vrBtn = vrBtnTransform.GetComponent<UnityEngine.UI.Button>();
                 var vrRt = vrBtnTransform.GetComponent<RectTransform>();
-                var resumeRt = resumeBtn != null ? resumeBtn.GetComponent<RectTransform>() : null;
-                var homeRt = homeBtn != null ? homeBtn.GetComponent<RectTransform>() : null;
-
-                if (resumeRt != null) resumeRt.anchoredPosition = new Vector2(0, 75);
-                if (vrRt != null) vrRt.anchoredPosition = new Vector2(0, 0);
-                if (homeRt != null) homeRt.anchoredPosition = new Vector2(0, -75);
+                if (vrRt != null)
+                {
+                    vrRt.anchorMin = new Vector2(0.5f, 0.5f);
+                    vrRt.anchorMax = new Vector2(0.5f, 0.5f);
+                    vrRt.pivot = new Vector2(0.5f, 0.5f);
+                    vrRt.anchoredPosition = new Vector2(0, -10f);
+                    vrRt.sizeDelta = new Vector2(360f, 60f);
+                }
 
                 if (vrBtn != null)
                 {
@@ -151,6 +219,10 @@ public class MenuPausa : MonoBehaviour
         {
             UpdateVRButtonLabel(vrBtnTransform);
         }
+        if (isPaused)
+        {
+            Pause();
+        }
     }
 
     private void UpdateVRButtonLabel(Transform vrBtnTransform)
@@ -169,20 +241,45 @@ public class MenuPausa : MonoBehaviour
         bool escapePressed = false;
 
 #if ENABLE_INPUT_SYSTEM
-        if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame && Application.isFocused)
+        if (Keyboard.current != null && (Keyboard.current.escapeKey.wasPressedThisFrame || Keyboard.current.pKey.wasPressedThisFrame) && Application.isFocused)
         {
             escapePressed = true;
         }
+
+        // Detectar botón de menú en controladores XR reconocidos por Input System
+        var xrControllers = InputSystem.devices;
+        for (int i = 0; i < xrControllers.Count; i++)
+        {
+            var menuCtrl = xrControllers[i].TryGetChildControl<UnityEngine.InputSystem.Controls.ButtonControl>("menuButton");
+            if (menuCtrl != null && menuCtrl.wasPressedThisFrame)
+            {
+                escapePressed = true;
+                break;
+            }
+        }
 #else
-        if (Input.GetKeyDown(KeyCode.Escape) && Application.isFocused)
+        if ((Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.P)) && Application.isFocused)
         {
             escapePressed = true;
         }
 #endif
 
+        // Detección directa en mandos VR (Oculus Touch / Meta Quest 2 botón Menu en mano izquierda)
+        bool vrMenuCurrent = false;
+        var leftHandDevice = UnityEngine.XR.InputDevices.GetDeviceAtXRNode(UnityEngine.XR.XRNode.LeftHand);
+        if (leftHandDevice.isValid && leftHandDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.menuButton, out bool menuVal))
+        {
+            vrMenuCurrent = menuVal;
+        }
+        if (vrMenuCurrent && !prevVRMenuPressed)
+        {
+            escapePressed = true;
+        }
+        prevVRMenuPressed = vrMenuCurrent;
+
         if (isPaused)
         {
-            // Detección directa y a prueba de fallos de clic de ratón sobre los botones de pausa
+            // Detección directa de clic de ratón (Editor / PC) sobre los botones de pausa
             bool clickPressed = false;
 #if ENABLE_INPUT_SYSTEM
             var mouse = Mouse.current;
@@ -198,8 +295,11 @@ public class MenuPausa : MonoBehaviour
 #else
                 mousePos = Input.mousePosition;
 #endif
+                var canvas = pauseMenu.GetComponent<Canvas>();
+                Camera eventCam = (canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay) ? (canvas.worldCamera ?? Camera.main) : null;
+
                 var rBtn = pauseMenu.transform.Find("ResumeButton")?.GetComponent<RectTransform>();
-                if (rBtn != null && RectTransformUtility.RectangleContainsScreenPoint(rBtn, mousePos, null))
+                if (rBtn != null && RectTransformUtility.RectangleContainsScreenPoint(rBtn, mousePos, eventCam))
                 {
                     Debug.Log("<color=green>[MenuPausa]</color> Clic directo detectado en Resumir");
                     Resume();
@@ -207,7 +307,7 @@ public class MenuPausa : MonoBehaviour
                 }
 
                 var vrBtn = pauseMenu.transform.Find("VRButton")?.GetComponent<RectTransform>();
-                if (vrBtn != null && RectTransformUtility.RectangleContainsScreenPoint(vrBtn, mousePos, null))
+                if (vrBtn != null && RectTransformUtility.RectangleContainsScreenPoint(vrBtn, mousePos, eventCam))
                 {
                     Debug.Log("<color=green>[MenuPausa]</color> Clic directo detectado en Alternar VR");
                     OnVRButtonClicked();
@@ -215,7 +315,7 @@ public class MenuPausa : MonoBehaviour
                 }
 
                 var hBtn = pauseMenu.transform.Find("HomeButton")?.GetComponent<RectTransform>();
-                if (hBtn != null && RectTransformUtility.RectangleContainsScreenPoint(hBtn, mousePos, null))
+                if (hBtn != null && RectTransformUtility.RectangleContainsScreenPoint(hBtn, mousePos, eventCam))
                 {
                     Debug.Log("<color=green>[MenuPausa]</color> Clic directo detectado en Salir");
                     Home();
@@ -232,17 +332,21 @@ public class MenuPausa : MonoBehaviour
             }
             else
             {
-                // Si la tableta o el modo dibujo están activos, ellos consumen el primer Escape para cerrarse
-                var tm = ArtSimulator.TabletManager.Instance;
-                if (tm != null && tm.IsTabletOpen)
+                bool isVR = ArtSimulator.XRPlayerRigManager.Instance != null && ArtSimulator.XRPlayerRigManager.Instance.IsVRActive;
+                if (!isVR)
                 {
-                    return;
-                }
+                    // Si la tableta o el modo dibujo están activos en PC clásico, ellos consumen el primer Escape para cerrarse
+                    var tm = ArtSimulator.TabletManager.Instance;
+                    if (tm != null && tm.IsTabletOpen)
+                    {
+                        return;
+                    }
 
-                var player = ArtSimulator.FirstPersonPlayerController.Instance;
-                if (player != null && player.IsDrawingMode)
-                {
-                    return;
+                    var player = ArtSimulator.FirstPersonPlayerController.Instance;
+                    if (player != null && player.IsDrawingMode)
+                    {
+                        return;
+                    }
                 }
 
                 Pause();
@@ -256,15 +360,67 @@ public class MenuPausa : MonoBehaviour
         EnsurePauseMenuReference();
         if (pauseMenu != null)
         {
-            pauseMenu.transform.localScale = Vector3.one;
+            bool isVR = ArtSimulator.XRPlayerRigManager.Instance != null && ArtSimulator.XRPlayerRigManager.Instance.IsVRActive;
             var canvas = pauseMenu.GetComponent<Canvas>();
-            if (canvas != null)
+
+            if (isVR)
             {
-                canvas.overrideSorting = true;
-                canvas.sortingOrder = 1000;
+                // En Realidad Virtual, colocar el panel flotando ergonómicamente frente a la vista del jugador
+                Camera mainCam = Camera.main;
+                if (mainCam != null)
+                {
+                    Vector3 headPos = mainCam.transform.position;
+                    Vector3 forward = mainCam.transform.forward;
+                    forward.y = 0; // mantener nivelado con la vista horizontal
+                    if (forward.sqrMagnitude < 0.01f) forward = mainCam.transform.forward;
+                    forward.Normalize();
+
+                    // Centrado exactamente a la altura de los ojos frente al jugador (1.15m de distancia)
+                    pauseMenu.transform.position = headPos + forward * 1.15f - Vector3.up * 0.05f;
+                    pauseMenu.transform.rotation = Quaternion.LookRotation(forward);
+                }
+
+                if (canvas != null)
+                {
+                    canvas.renderMode = RenderMode.WorldSpace;
+                    canvas.worldCamera = mainCam;
+                    canvas.overrideSorting = true;
+                    canvas.sortingOrder = 1000;
+                }
+
+                pauseMenu.transform.localScale = Vector3.one * 0.0016f;
+                var rt = pauseMenu.GetComponent<RectTransform>();
+                if (rt != null)
+                {
+                    rt.pivot = new Vector2(0.5f, 0.5f);
+                    rt.sizeDelta = new Vector2(850, 600);
+                }
+
+                var tdRay = pauseMenu.GetComponent<TrackedDeviceGraphicRaycaster>();
+                if (tdRay == null) tdRay = pauseMenu.AddComponent<TrackedDeviceGraphicRaycaster>();
+                if (tdRay != null) tdRay.ignoreReversedGraphics = false;
+
+                var gr = pauseMenu.GetComponent<UnityEngine.UI.GraphicRaycaster>();
+                if (gr != null)
+                {
+                    gr.ignoreReversedGraphics = false;
+                    gr.blockingObjects = UnityEngine.UI.GraphicRaycaster.BlockingObjects.None;
+                }
             }
+            else
+            {
+                if (canvas != null)
+                {
+                    canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+                    canvas.overrideSorting = true;
+                    canvas.sortingOrder = 1000;
+                }
+                pauseMenu.transform.localScale = Vector3.one;
+            }
+
             pauseMenu.SetActive(true);
         }
+
         Time.timeScale = 0f;
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
@@ -284,14 +440,23 @@ public class MenuPausa : MonoBehaviour
         }
         Time.timeScale = 1f;
 
-        if (ArtSimulator.FirstPersonPlayerController.Instance != null)
+        bool isVR = ArtSimulator.XRPlayerRigManager.Instance != null && ArtSimulator.XRPlayerRigManager.Instance.IsVRActive;
+        if (!isVR)
         {
-            ArtSimulator.FirstPersonPlayerController.Instance.SetCursorLock(true);
+            if (ArtSimulator.FirstPersonPlayerController.Instance != null)
+            {
+                ArtSimulator.FirstPersonPlayerController.Instance.SetCursorLock(true);
+            }
+            else
+            {
+                Cursor.lockState = CursorLockMode.Locked;
+                Cursor.visible = false;
+            }
         }
         else
         {
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
         }
     }
 

@@ -98,6 +98,47 @@ namespace ArtSimulator
             CreateCrosshairUI();
         }
 
+        private void OnEnable()
+        {
+            if (crosshairCanvas != null)
+            {
+                crosshairCanvas.SetActive(true);
+            }
+            SetPromptText("");
+            SetCameraPromptText("");
+        }
+
+        private void OnDisable()
+        {
+            SetPromptText("");
+            SetCameraPromptText("");
+            if (crosshairCanvas != null)
+            {
+                crosshairCanvas.SetActive(false);
+            }
+        }
+
+        private void OnDestroy()
+        {
+            if (crosshairCanvas != null)
+            {
+                Destroy(crosshairCanvas);
+            }
+        }
+
+        public void SetCrosshairVisible(bool visible)
+        {
+            if (crosshairCanvas != null)
+            {
+                crosshairCanvas.SetActive(visible);
+            }
+            if (!visible)
+            {
+                SetPromptText("");
+                SetCameraPromptText("");
+            }
+        }
+
         private void Start()
         {
             if (TabletManager.Instance != null)
@@ -158,7 +199,7 @@ namespace ArtSimulator
                 {
                     SetCursorLock(false);
                 }
-                SetPromptText("");
+                SetPromptText("📱 <b>Tableta abierta</b> - Pulsa <b>[ESC]</b> para cerrar y caminar");
                 HandleTabletShortcuts();
                 return;
             }
@@ -188,14 +229,9 @@ namespace ArtSimulator
             if (isEscPressed)
             {
                 var tm = TabletManager.Instance;
-                var ui = tm != null ? tm.GetComponent<TabletUIController>() : FindAnyObjectByType<TabletUIController>();
-                var canvasObj = ui != null ? ui.GetTabletCanvasObject() : GameObject.Find("TabletCanvas");
-                bool isCanvasActive = canvasObj != null && canvasObj.activeInHierarchy;
-
-                if ((tm != null && tm.IsTabletOpen) || isCanvasActive)
+                if (tm != null && tm.IsTabletOpen)
                 {
-                    if (tm != null) tm.CloseTablet();
-                    if (canvasObj != null) canvasObj.SetActive(false);
+                    tm.CloseTablet();
                     SetCursorLock(true);
                 }
             }
@@ -969,6 +1005,16 @@ namespace ArtSimulator
 
         private void CreateCrosshairUI()
         {
+            // Eliminar instancias duplicadas que hayan quedado en escena
+            var existingCanvases = FindObjectsByType<Canvas>(FindObjectsInactive.Include);
+            for (int i = 0; i < existingCanvases.Length; i++)
+            {
+                if (existingCanvases[i] != null && existingCanvases[i].gameObject.name == "PlayerCrosshairHUD")
+                {
+                    Destroy(existingCanvases[i].gameObject);
+                }
+            }
+
             crosshairCanvas = new GameObject("PlayerCrosshairHUD", typeof(Canvas), typeof(CanvasScaler));
             Canvas canvas = crosshairCanvas.GetComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;

@@ -476,6 +476,7 @@ namespace ArtSimulator
                 thumbImg.sprite = spr;
                 thumbImg.preserveAspect = true;
                 thumbImg.raycastTarget = false;
+                thumbRt.localScale = new Vector3(-1f, 1f, 1f);
 
                 // Etiqueta del título
                 GameObject lblObj = new GameObject("TitleLbl", typeof(RectTransform), typeof(Text));

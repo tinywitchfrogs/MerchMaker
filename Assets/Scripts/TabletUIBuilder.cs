@@ -532,6 +532,7 @@ namespace ArtSimulator
             imgRt.offsetMax = Vector2.zero;
             Image artImg = imgObj.AddComponent<Image>();
             artImg.raycastTarget = false;
+            imgRt.localScale = new Vector3(-1f, 1f, 1f);
 
             // Título de la ilustración
             Text titleTxt = CreateText("ArtworkTitle", previewPanel.transform, "Selecciona una ilustración", 20, FontStyle.Bold, new Color(0.08f, 0.12f, 0.20f), TextAnchor.MiddleCenter);
@@ -885,6 +886,7 @@ namespace ArtSimulator
             previewImg = prevObj.AddComponent<Image>();
             previewImg.color = new Color(0.85f, 0.85f, 0.85f);
             previewImg.raycastTarget = false;
+            prRt.localScale = new Vector3(-1f, 1f, 1f);
 
             nameTxt = CreateText("NameLabel", box.transform, "Nombre: Producto", 16, FontStyle.Bold, Color.black, TextAnchor.MiddleLeft);
             RectTransform nRt = nameTxt.GetComponent<RectTransform>();
