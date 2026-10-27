@@ -10,7 +10,7 @@ namespace ArtSimulator
         {
             get
             {
-                if (instance == null) instance = FindFirstObjectByType<PrinterController>();
+                if (instance == null) instance = FindAnyObjectByType<PrinterController>();
                 return instance;
             }
             private set => instance = value;
@@ -25,7 +25,6 @@ namespace ArtSimulator
 
         [Header("Configuración")]
         [SerializeField] private float scanCooldown = 1.5f;
-        [SerializeField] private float printEjectForce = 0.20f;
 
         private float lastScanTime = -10f;
         private AudioSource audioSource;
@@ -95,8 +94,7 @@ namespace ArtSimulator
                 paperSpawnPoint.rotation = Quaternion.Euler(0, 90, 0);
             }
 
-            // Ajustar el trigger BoxCollider para que cubra ÚNICAMENTE el cristal superior del escáner
-            // y no interfiera con la bandeja frontal inferior de salida de copias
+            // Ajustar el trigger BoxCollider para que cubra el cristal superior del escáner
             BoxCollider bc = GetComponent<BoxCollider>();
             if (bc != null)
             {
@@ -104,6 +102,62 @@ namespace ArtSimulator
                 // En espacio local de la impresora (escala ~0.1465):
                 bc.center = new Vector3(0f, 1.5f, 0f);
                 bc.size = new Vector3(4.8f, 3.5f, 4.8f);
+            }
+
+            // Asegurar Rigidbody en la impresora para que las colisiones y triggers de Unity funcionen siempre
+            Rigidbody rb = GetComponent<Rigidbody>();
+            if (rb == null) rb = gameObject.AddComponent<Rigidbody>();
+            rb.isKinematic = true;
+        }
+
+        private float lastRetrieveTime = -10f;
+        private ScannableDrawing lastRetrievedDrawing = null;
+
+        private void Update()
+        {
+            // Detección automática y proactiva de dibujos dejados sobre o al lado de la impresora
+            if (currentInsertedDrawing == null)
+            {
+                CheckForNearbyDrawingToScan();
+            }
+        }
+
+        private void CheckForNearbyDrawingToScan()
+        {
+            Vector3 scannerPos = GetScannerBedPosition();
+            var drawings = FindObjectsByType<ScannableDrawing>(FindObjectsInactive.Exclude);
+            for (int i = 0; i < drawings.Length; i++)
+            {
+                ScannableDrawing d = drawings[i];
+                if (d == null || !d.IsOriginal) continue;
+
+                // Evitar re-aspirar inmediatamente el dibujo que el jugador acaba de retirar
+                if (d == lastRetrievedDrawing && Time.time - lastRetrieveTime < 2.5f) continue;
+
+                float dist = Vector3.Distance(d.transform.position, scannerPos);
+                // Si el dibujo está sobre el escáner o en la mesa junto a la impresora (radio 0.65m)
+                if (dist < 0.65f)
+                {
+                    // Si el jugador lo tiene en su mano en VR, soltarlo suavemente de la mano
+                    var grab = d.GetComponent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRGrabInteractable>();
+                    if (grab != null && grab.isSelected && grab.interactionManager != null)
+                    {
+                        var interactor = grab.firstInteractorSelecting;
+                        if (interactor != null)
+                        {
+                            grab.interactionManager.SelectExit(interactor, grab);
+                        }
+                    }
+
+                    // Si el jugador lo tiene en la mano de PC, soltarlo
+                    if (FirstPersonPlayerController.Instance != null && FirstPersonPlayerController.Instance.IsHoldingObject(d.transform))
+                    {
+                        FirstPersonPlayerController.Instance.ReleaseDeliveredObject(d.transform);
+                    }
+
+                    InsertDrawing(d);
+                    break;
+                }
             }
         }
 
@@ -148,7 +202,7 @@ namespace ArtSimulator
             // Escanear inmediatamente y subir a la tableta
             ScanDrawing(drawing);
 
-            Debug.Log($"<color=cyan>[Impresora]</color> Dibujo <b>'{drawing.GetArtworkData().title}'</b> introducido en el escáner.");
+            Debug.Log($"<color=cyan>[Impresora]</color> Dibujo <b>'{drawing.GetArtworkData().title}'</b> colocado automáticamente en el escáner.");
             return true;
         }
 
@@ -161,6 +215,8 @@ namespace ArtSimulator
 
             ScannableDrawing drawing = currentInsertedDrawing;
             currentInsertedDrawing = null;
+            lastRetrievedDrawing = drawing;
+            lastRetrieveTime = Time.time;
 
             BoxCollider bc = drawing.GetComponent<BoxCollider>();
             if (bc != null) bc.enabled = true;
@@ -263,7 +319,7 @@ namespace ArtSimulator
             // Contar copias existentes en la bandeja para apilar sutilmente en Y (evita solapamiento z-fighting)
             int existingCopies = 0;
             Vector3 baseTrayPos = GetPaperTrayPosition();
-            var currentCopies = FindObjectsByType<ScannableDrawing>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+            var currentCopies = FindObjectsByType<ScannableDrawing>(FindObjectsInactive.Exclude);
             for (int i = 0; i < currentCopies.Length; i++)
             {
                 if (!currentCopies[i].IsOriginal && Vector3.Distance(currentCopies[i].transform.position, baseTrayPos) < 0.35f)
@@ -288,7 +344,7 @@ namespace ArtSimulator
                 GameObject sceneDrawing = GameObject.Find("Dibujo") ?? GameObject.Find("Dibujo_1");
                 if (sceneDrawing == null)
                 {
-                    var foundScannable = FindFirstObjectByType<ScannableDrawing>();
+                    var foundScannable = FindAnyObjectByType<ScannableDrawing>();
                     if (foundScannable != null) sceneDrawing = foundScannable.gameObject;
                 }
 
@@ -367,6 +423,12 @@ namespace ArtSimulator
             }
             rb.isKinematic = true;
             rb.useGravity = false;
+
+            // Configurar interactuable VR para que el jugador pueda agarrar la copia física con sus manos
+            if (XRPlayerRigManager.Instance != null)
+            {
+                XRPlayerRigManager.Instance.ConfigureDrawingForVR(newPaper);
+            }
 
             // Deslizar suavemente desde la ranura de la impresora a la bandeja exterior
             StartCoroutine(SlidePaperToTray(newPaper.transform, slotPos, trayFinalPos, 0.45f));

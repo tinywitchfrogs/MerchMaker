@@ -67,9 +67,9 @@ namespace ArtSimulator
                 }
             }
 
-            // 3. Garantizar que jamás tenga físicas de Rigidbody (100% estática)
+            // 3. Garantizar que tenga Rigidbody cinemático para reposar en la mesa o ser agarrada en VR
             Rigidbody rb = GetComponent<Rigidbody>();
-            if (rb != null) Destroy(rb);
+            if (rb != null) rb.isKinematic = true;
         }
 
         public void InteractWithTablet()

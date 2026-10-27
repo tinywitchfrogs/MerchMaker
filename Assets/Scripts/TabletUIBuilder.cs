@@ -15,7 +15,7 @@ namespace ArtSimulator
         {
             // Verificar si ya existe un Canvas de Tableta (incluyendo inactivos)
             GameObject canvasObj = null;
-            var canvases = FindObjectsByType<Canvas>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            var canvases = FindObjectsByType<Canvas>(FindObjectsInactive.Include);
             for (int i = 0; i < canvases.Length; i++)
             {
                 if (canvases[i].name == "TabletCanvas")
@@ -142,13 +142,16 @@ namespace ArtSimulator
             uiCtrl.WireAllButtons();
 
             // TabletInteractiveScreen en el modelo 3D
-            TabletInteractiveScreen interactiveScreen = GetComponent<TabletInteractiveScreen>();
-            if (interactiveScreen == null) interactiveScreen = gameObject.AddComponent<TabletInteractiveScreen>();
-
+            // Asegurar que el Rigidbody se mantenga cinemático al reposar sobre la mesa
             Rigidbody rb = GetComponent<Rigidbody>();
-            if (rb != null) Destroy(rb);
+            if (rb != null) rb.isKinematic = true;
 
-            if (TabletManager.Instance != null && !TabletManager.Instance.IsTabletOpen)
+            // En Realidad Virtual, montar inmediatamente la interfaz sobre la pantalla física 3D
+            if (XRPlayerRigManager.Instance != null && XRPlayerRigManager.Instance.IsVRActive)
+            {
+                XRPlayerRigManager.Instance.MountTabletCanvasOnScreen(gameObject);
+            }
+            else if (TabletManager.Instance != null && !TabletManager.Instance.IsTabletOpen)
             {
                 canvasObj.SetActive(false);
             }

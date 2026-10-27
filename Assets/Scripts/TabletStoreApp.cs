@@ -35,14 +35,9 @@ namespace ArtSimulator
         [Header("Economía y Saldo")]
         [SerializeField] private Text moneyDisplayText;
 
-        [Header("Configuración de Pedidos Automáticos")]
-        [SerializeField] private float orderCheckInterval = 15f;
-        [SerializeField] private int maxActiveOrders = 6;
-
         private Texture2D chosenPhoto;
         private int currentPrice = 5000;
         private string currentProductName = "Lámina Artística";
-        private Coroutine ordersRoutine;
 
         private void Start()
         {
@@ -437,7 +432,7 @@ namespace ArtSimulator
                 SafeDestroy(toDestroy[i]);
             }
 
-            // Para la tienda solo se utilizan las fotografías capturadas con la cámara (las obras escaneadas solo se usan para hacer copias)
+            // Para la tienda solo se utilizan las fotografías capturadas con la cámara
             List<ArtworkData> availableArtworks = new List<ArtworkData>();
             if (TabletManager.Instance.PhotoArtworks != null)
             {

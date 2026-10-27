@@ -513,7 +513,7 @@ namespace ArtSimulator
         public void OnPrintClicked()
         {
             // Debounce para evitar doble ejecución accidental
-            if (Time.unscaledTime - lastPrintTime < 0.6f) return;
+            if (Time.unscaledTime - lastPrintTime < 0.35f) return;
             lastPrintTime = Time.unscaledTime;
 
             if (currentSelectedArtwork == null && TabletManager.Instance != null)
@@ -523,10 +523,20 @@ namespace ArtSimulator
                 {
                     SelectArtwork(list[0]);
                 }
+                else
+                {
+                    // Intentar con la otra lista si la actual está vacía
+                    var fallbackList = (currentTab == GalleryTab.Scans) ? TabletManager.Instance.PhotoArtworks : TabletManager.Instance.ScannedArtworks;
+                    if (fallbackList != null && fallbackList.Count > 0)
+                    {
+                        SelectArtwork(fallbackList[0]);
+                    }
+                }
             }
 
             if (currentSelectedArtwork == null)
             {
+                Debug.LogWarning("[TabletGalleryApp] No hay ninguna obra seleccionada para imprimir.");
                 if (statusMessageText != null)
                 {
                     statusMessageText.text = (currentTab == GalleryTab.Scans)
@@ -536,14 +546,16 @@ namespace ArtSimulator
                 return;
             }
 
-            if (PrinterController.Instance != null)
+            var printer = PrinterController.Instance != null ? PrinterController.Instance : FindAnyObjectByType<PrinterController>();
+            if (printer != null)
             {
                 int qty = Mathf.Clamp(printQuantity, 1, 10);
-                PrinterController.Instance.PrintArtworks(currentSelectedArtwork, qty);
+                Debug.Log($"<color=green>[TabletGalleryApp]</color> Imprimiendo {qty} copias de: <b>{currentSelectedArtwork.title}</b>");
+                printer.PrintArtworks(currentSelectedArtwork, qty);
                 if (statusMessageText != null)
                 {
                     string plural = qty == 1 ? "copia" : "copias";
-                    statusMessageText.text = $"✓ ¡Imprimiendo {qty} {plural} de '{currentSelectedArtwork.title}'! Revisa la bandeja.";
+                    statusMessageText.text = $"✓ ¡Imprimiendo {qty} {plural} de '{currentSelectedArtwork.title}'! Revisa la bandeja de la impresora.";
                 }
             }
             else

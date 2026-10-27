@@ -44,7 +44,7 @@ namespace ArtSimulator
                 screenInt.EnsureCollidersAndVisuals();
 
                 Rigidbody rb = tabletObj.GetComponent<Rigidbody>();
-                if (rb != null) Object.Destroy(rb);
+                if (rb != null) rb.isKinematic = true;
 
                 // Asegurar que la pantalla de la tableta empiece oculta
                 TabletManager tm = tabletObj.GetComponent<TabletManager>();
@@ -88,7 +88,7 @@ namespace ArtSimulator
             }
 
             System.Collections.Generic.List<GameObject> drawingObjects = new System.Collections.Generic.List<GameObject>();
-            foreach (var go in Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None))
+            foreach (var go in Object.FindObjectsByType<GameObject>())
             {
                 if (go.name.StartsWith("Dibujo") && !go.name.Contains("Copia"))
                 {
@@ -159,6 +159,13 @@ namespace ArtSimulator
 
             // 9. Pila de Hojas Limpias (PaperDispenser)
             SetupPaperDispenser();
+
+            // 10. Administrador de Realidad Virtual (XRPlayerRigManager)
+            if (XRPlayerRigManager.Instance == null && Object.FindAnyObjectByType<XRPlayerRigManager>() == null)
+            {
+                GameObject xrManagerObj = new GameObject("XRPlayerRigManager");
+                xrManagerObj.AddComponent<XRPlayerRigManager>();
+            }
         }
 
         private static void SetupPaperDispenser()

@@ -11,7 +11,7 @@ public class SendProduct : MonoBehaviour
     {
         get
         {
-            if (instance == null) instance = FindFirstObjectByType<SendProduct>();
+            if (instance == null) instance = FindAnyObjectByType<SendProduct>();
             return instance;
         }
         private set => instance = value;
@@ -130,7 +130,7 @@ public class SendProduct : MonoBehaviour
                 }
                 else
                 {
-                    var econ = FindFirstObjectByType<PlayerEconomy>();
+                    var econ = FindAnyObjectByType<PlayerEconomy>();
                     if (econ != null) econ.AgregarDinero(totalReward);
                 }
 
@@ -160,7 +160,7 @@ public class SendProduct : MonoBehaviour
             }
             else
             {
-                var econ = FindFirstObjectByType<PlayerEconomy>();
+                var econ = FindAnyObjectByType<PlayerEconomy>();
                 if (econ != null) econ.AgregarDinero(freeReward);
             }
 

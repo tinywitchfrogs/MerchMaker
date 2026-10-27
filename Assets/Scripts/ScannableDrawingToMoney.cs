@@ -12,7 +12,7 @@ namespace ArtSimulator
 
         private void Start()
         {
-            playerEconomy = FindObjectOfType<PlayerEconomy>();
+            playerEconomy = FindAnyObjectByType<PlayerEconomy>();
         }
 
         private void OnTriggerEnter(Collider other)
@@ -30,7 +30,7 @@ namespace ArtSimulator
                 playerEconomy.AgregarDinero(dineroGanado);
             }
 
-            Destroy(producto);
+            Destroy(producto != null ? producto : gameObject);
         }
     }
 }

@@ -8,7 +8,7 @@ public class PlayerEconomy : MonoBehaviour
     {
         get
         {
-            if (instance == null) instance = FindFirstObjectByType<PlayerEconomy>();
+            if (instance == null) instance = FindAnyObjectByType<PlayerEconomy>();
             return instance;
         }
         private set => instance = value;

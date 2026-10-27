@@ -130,7 +130,7 @@ namespace ArtSimulator
 
         public GameObject GetTabletCanvasObject()
         {
-            var canvases = FindObjectsByType<Canvas>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            var canvases = FindObjectsByType<Canvas>(FindObjectsInactive.Include);
             for (int i = 0; i < canvases.Length; i++)
             {
                 if (canvases[i].name == "TabletCanvas")

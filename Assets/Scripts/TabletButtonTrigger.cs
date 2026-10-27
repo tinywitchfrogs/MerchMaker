@@ -9,7 +9,7 @@ namespace ArtSimulator
     /// Componente que garantiza la ejecución del clic de ratón directamente vía IPointerClickHandler.
     /// No depende de la serialización de Button.onClick y sobrevive recargas de dominio y cambios de escena.
     /// </summary>
-    public class TabletButtonTrigger : MonoBehaviour, IPointerClickHandler, IPointerEnterHandler, IPointerExitHandler, IPointerDownHandler, IPointerUpHandler
+    public class TabletButtonTrigger : MonoBehaviour, IPointerClickHandler, IPointerEnterHandler, IPointerExitHandler, IPointerDownHandler, IPointerUpHandler, ISubmitHandler
     {
         [SerializeField] private string actionName = "ButtonAction";
         
@@ -39,10 +39,12 @@ namespace ArtSimulator
 
         public void OnPointerClick(PointerEventData eventData)
         {
-            if (eventData.button == PointerEventData.InputButton.Left)
-            {
-                TriggerClick();
-            }
+            TriggerClick();
+        }
+
+        public void OnSubmit(BaseEventData eventData)
+        {
+            TriggerClick();
         }
 
         public void TriggerClick()

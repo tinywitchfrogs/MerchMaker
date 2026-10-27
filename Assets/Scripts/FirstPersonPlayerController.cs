@@ -11,7 +11,7 @@ namespace ArtSimulator
         {
             get
             {
-                if (instance == null) instance = FindFirstObjectByType<FirstPersonPlayerController>();
+                if (instance == null) instance = FindAnyObjectByType<FirstPersonPlayerController>();
                 return instance;
             }
             private set => instance = value;
@@ -188,7 +188,7 @@ namespace ArtSimulator
             if (isEscPressed)
             {
                 var tm = TabletManager.Instance;
-                var ui = tm != null ? tm.GetComponent<TabletUIController>() : FindFirstObjectByType<TabletUIController>();
+                var ui = tm != null ? tm.GetComponent<TabletUIController>() : FindAnyObjectByType<TabletUIController>();
                 var canvasObj = ui != null ? ui.GetTabletCanvasObject() : GameObject.Find("TabletCanvas");
                 bool isCanvasActive = canvasObj != null && canvasObj.activeInHierarchy;
 

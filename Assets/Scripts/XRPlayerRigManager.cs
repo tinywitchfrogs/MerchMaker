@@ -5,7 +5,9 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.XR;
 using Unity.XR.CoreUtils;
+using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.XR.Interaction.Toolkit.Interactables;
+using UnityEngine.XR.Interaction.Toolkit.Interactors;
 using UnityEngine.XR.Interaction.Toolkit.UI;
 
 namespace ArtSimulator
@@ -46,7 +48,7 @@ namespace ArtSimulator
             }
             else if (Instance != this)
             {
-                Destroy(this);
+                Destroy(gameObject);
                 return;
             }
 
@@ -68,6 +70,38 @@ namespace ArtSimulator
             DetermineAndSetupVR();
         }
 
+        private void OnEnable()
+        {
+            InputDevices.deviceConnected += OnDeviceConnected;
+            InputDevices.deviceDisconnected += OnDeviceDisconnected;
+        }
+
+        private void OnDisable()
+        {
+            InputDevices.deviceConnected -= OnDeviceConnected;
+            InputDevices.deviceDisconnected -= OnDeviceDisconnected;
+        }
+
+        private void OnDeviceConnected(InputDevice device)
+        {
+            if ((device.characteristics & InputDeviceCharacteristics.HeadMounted) != 0)
+            {
+                Debug.Log($"<color=green>[XR Manager]</color> Visor VR conectado: {device.name}. Activando modo VR...");
+                if (!forceDesktopMode && !isVRActive)
+                {
+                    EnableVRRig();
+                }
+            }
+        }
+
+        private void OnDeviceDisconnected(InputDevice device)
+        {
+            if ((device.characteristics & InputDeviceCharacteristics.HeadMounted) != 0)
+            {
+                Debug.Log($"<color=yellow>[XR Manager]</color> Visor VR desconectado: {device.name}.");
+            }
+        }
+
         private void Start()
         {
             SetupVRInteractables();
@@ -77,6 +111,19 @@ namespace ArtSimulator
             {
                 TabletManager.Instance.OnTabletOpenStateChanged -= OnTabletVisibilityChanged;
                 TabletManager.Instance.OnTabletOpenStateChanged += OnTabletVisibilityChanged;
+            }
+
+            StartCoroutine(DelayedHMDCheck());
+        }
+
+        private IEnumerator DelayedHMDCheck()
+        {
+            // Margen para que OpenXR termine el handshake con visores conectados por cable/Link/SteamVR
+            yield return new WaitForSeconds(1.2f);
+            if (!forceDesktopMode && !isVRActive && CheckPhysicalVRDevice())
+            {
+                Debug.Log("<color=green>[XR Manager]</color> Visor VR físico verificado tras arranque. Activando modo VR...");
+                EnableVRRig();
             }
         }
 
@@ -91,22 +138,64 @@ namespace ArtSimulator
         private void Update()
         {
             // Tecla de acceso rápido F12 para alternar entre modo VR (Simulador) y modo Desktop
+#if ENABLE_INPUT_SYSTEM
+            var kb = UnityEngine.InputSystem.Keyboard.current;
+            if (kb != null && kb.f12Key.wasPressedThisFrame)
+            {
+                ToggleVRMode();
+            }
+#else
             if (Input.GetKeyDown(KeyCode.F12))
             {
                 ToggleVRMode();
             }
+#endif
         }
 
         public void ToggleVRMode()
         {
-            forceDesktopMode = !forceDesktopMode;
-            Debug.Log($"<color=yellow>[XR Manager]</color> Alternando modo VR. Forzar Desktop: {forceDesktopMode}");
-            DetermineAndSetupVR();
+            if (isVRActive)
+            {
+                forceDesktopMode = true;
+                EnableDesktopRig();
+            }
+            else
+            {
+                forceDesktopMode = false;
+                enableVRInEditor = true;
+                EnableVRRig();
+            }
+            Debug.Log($"<color=yellow>[XR Manager]</color> Modo alternado. VR Activo: {isVRActive}, Forzar Desktop: {forceDesktopMode}");
+        }
+
+        public bool CheckPhysicalVRDevice()
+        {
+            // 1. Verificar si hay un visor físico conectado (HMD) detectado por InputDevices
+            var inputDevices = new List<InputDevice>();
+            InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.HeadMounted, inputDevices);
+            if (inputDevices.Count > 0)
+            {
+                for (int i = 0; i < inputDevices.Count; i++)
+                {
+                    if (inputDevices[i].isValid) return true;
+                }
+            }
+
+            // 2. Verificar subsistemas XR activos en ejecución
+            var displays = new List<XRDisplaySubsystem>();
+            SubsystemManager.GetSubsystems(displays);
+            for (int i = 0; i < displays.Count; i++)
+            {
+                if (displays[i].running) return true;
+            }
+
+            // 3. Fallback legado
+            return XRSettings.isDeviceActive;
         }
 
         private void DetermineAndSetupVR()
         {
-            bool hasPhysicalHMD = XRSettings.isDeviceActive;
+            bool hasPhysicalHMD = CheckPhysicalVRDevice();
             bool shouldEnableVR = !forceDesktopMode && (hasPhysicalHMD || (Application.isEditor && enableVRInEditor));
 
             if (shouldEnableVR)
@@ -119,16 +208,28 @@ namespace ArtSimulator
             }
         }
 
-        private void EnableVRRig()
+        public void EnableVRRig()
         {
             isVRActive = true;
 
             // 1. Instanciar o activar XR Origin (XR Rig)
             if (spawnedXROrigin == null)
             {
+                if (xrOriginPrefab == null)
+                {
+#if UNITY_EDITOR
+                    xrOriginPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(XR_ORIGIN_PREFAB_PATH);
+#endif
+                }
+
                 if (xrOriginPrefab != null)
                 {
+                    var playerCtrl = FirstPersonPlayerController.Instance != null ? FirstPersonPlayerController.Instance : FindAnyObjectByType<FirstPersonPlayerController>();
                     Vector3 spawnPos = new Vector3(5.20f, -0.85f, -8.00f);
+                    if (playerCtrl != null)
+                    {
+                        spawnPos = new Vector3(playerCtrl.transform.position.x, -0.85f, playerCtrl.transform.position.z);
+                    }
                     Quaternion spawnRot = Quaternion.identity;
                     spawnedXROrigin = Instantiate(xrOriginPrefab, spawnPos, spawnRot);
                     spawnedXROrigin.name = "XR Origin (VR Rig)";
@@ -152,8 +253,15 @@ namespace ArtSimulator
             }
 
             // 2. Instanciar Simulador si estamos en el Editor sin visor físico conectado
-            if (Application.isEditor && !XRSettings.isDeviceActive)
+            if (Application.isEditor && !CheckPhysicalVRDevice())
             {
+                if (spawnedSimulator == null && xrSimulatorPrefab == null)
+                {
+#if UNITY_EDITOR
+                    xrSimulatorPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(XR_SIMULATOR_PREFAB_PATH);
+#endif
+                }
+
                 if (spawnedSimulator == null && xrSimulatorPrefab != null)
                 {
                     spawnedSimulator = Instantiate(xrSimulatorPrefab);
@@ -167,17 +275,21 @@ namespace ArtSimulator
             }
 
             // 3. Desactivar cámara y controlador de primera persona de escritorio
-            Camera desktopCam = null;
-            var playerCtrl = FirstPersonPlayerController.Instance;
-            if (playerCtrl != null)
+            var currentDesktopPlayer = FirstPersonPlayerController.Instance != null ? FirstPersonPlayerController.Instance : FindAnyObjectByType<FirstPersonPlayerController>();
+            if (currentDesktopPlayer != null)
             {
-                desktopCam = playerCtrl.GetComponent<Camera>();
-                playerCtrl.enabled = false;
-            }
-
-            if (desktopCam != null && desktopCam != Camera.main)
-            {
-                desktopCam.enabled = false;
+                Camera desktopCam = currentDesktopPlayer.GetComponent<Camera>();
+                if (desktopCam != null)
+                {
+                    desktopCam.enabled = false;
+                    desktopCam.tag = "Untagged";
+                }
+                AudioListener desktopAudio = currentDesktopPlayer.GetComponent<AudioListener>();
+                if (desktopAudio != null)
+                {
+                    desktopAudio.enabled = false;
+                }
+                currentDesktopPlayer.enabled = false;
             }
 
             // Asegurar que la cámara del XR Origin sea la MainCamera activa
@@ -188,21 +300,32 @@ namespace ArtSimulator
                 {
                     vrCam.tag = "MainCamera";
                     vrCam.enabled = true;
+                    AudioListener vrAudio = vrCam.GetComponent<AudioListener>();
+                    if (vrAudio != null) vrAudio.enabled = true;
                 }
             }
 
             // 4. Adaptar EventSystem para Realidad Virtual con XRUIInputModule
             ConfigureEventSystemForVR();
 
+            // 5. Configurar objetos interactivos
+            SetupVRInteractables();
+
             Debug.Log("<color=green>[XR Manager]</color> <b>Modo Realidad Virtual (VR) ACTIVADO</b>. XR Origin configurado en la oficina.");
         }
 
-        private void EnableDesktopRig()
+        public void EnableDesktopRig()
         {
             isVRActive = false;
 
             if (spawnedXROrigin != null)
             {
+                Camera vrCam = spawnedXROrigin.GetComponentInChildren<Camera>();
+                if (vrCam != null)
+                {
+                    vrCam.tag = "Untagged";
+                    vrCam.enabled = false;
+                }
                 spawnedXROrigin.SetActive(false);
             }
 
@@ -212,16 +335,21 @@ namespace ArtSimulator
             }
 
             // Reactivar jugador de escritorio
-            var playerCtrl = FirstPersonPlayerController.Instance;
-            if (playerCtrl != null)
+            var currentDesktopPlayer = FirstPersonPlayerController.Instance != null ? FirstPersonPlayerController.Instance : FindAnyObjectByType<FirstPersonPlayerController>();
+            if (currentDesktopPlayer != null)
             {
-                playerCtrl.enabled = true;
-                Camera desktopCam = playerCtrl.GetComponent<Camera>();
+                Camera desktopCam = currentDesktopPlayer.GetComponent<Camera>();
                 if (desktopCam != null)
                 {
                     desktopCam.tag = "MainCamera";
                     desktopCam.enabled = true;
                 }
+                AudioListener desktopAudio = currentDesktopPlayer.GetComponent<AudioListener>();
+                if (desktopAudio != null)
+                {
+                    desktopAudio.enabled = true;
+                }
+                currentDesktopPlayer.enabled = true;
             }
 
             Debug.Log("<color=cyan>[XR Manager]</color> <b>Modo Escritorio (Teclado/Ratón) ACTIVADO</b>.");
@@ -229,7 +357,7 @@ namespace ArtSimulator
 
         private void ConfigureEventSystemForVR()
         {
-            EventSystem es = FindFirstObjectByType<EventSystem>();
+            EventSystem es = FindAnyObjectByType<EventSystem>();
             if (es != null)
             {
                 XRUIInputModule xrModule = es.GetComponent<XRUIInputModule>();
@@ -248,21 +376,17 @@ namespace ArtSimulator
         public void SetupVRInteractables()
         {
             // 1. Dibujos y lienzos
-            var drawings = FindObjectsByType<ScannableDrawing>(FindObjectsSortMode.None);
+            var drawings = FindObjectsByType<ScannableDrawing>();
             for (int i = 0; i < drawings.Length; i++)
             {
                 ConfigureDrawingForVR(drawings[i].gameObject);
             }
 
-            // 2. Tableta física
+            // 2. Tableta física interactiva para sostener con la mano en VR
             GameObject tabletaObj = GameObject.Find("Tableta");
             if (tabletaObj != null)
             {
-                var simpleInt = tabletaObj.GetComponent<XRSimpleInteractable>();
-                if (simpleInt == null) simpleInt = tabletaObj.AddComponent<XRSimpleInteractable>();
-
-                simpleInt.selectEntered.RemoveListener(OnTabletaSelected);
-                simpleInt.selectEntered.AddListener(OnTabletaSelected);
+                ConfigureTabletForVR(tabletaObj);
             }
 
             // 3. Dispensador de hojas
@@ -274,17 +398,136 @@ namespace ArtSimulator
                 dispInt.selectEntered.RemoveListener(OnDispenserSelected);
                 dispInt.selectEntered.AddListener(OnDispenserSelected);
             }
-
-            // 4. Asegurar TrackedDeviceGraphicRaycaster en el TabletCanvas
-            ConfigureTabletCanvasForVR();
         }
 
-        private void OnTabletaSelected(SelectEnterEventArgs args)
+        public void ConfigureTabletForVR(GameObject tabletObj)
         {
-            if (TabletManager.Instance != null)
+            if (tabletObj == null) return;
+
+            // 1. Remover interactuable simple previo
+            var simpleInt = tabletObj.GetComponent<XRSimpleInteractable>();
+            if (simpleInt != null) Destroy(simpleInt);
+
+            // 2. Asegurar Rigidbody para física y agarre con la mano
+            var rb = tabletObj.GetComponent<Rigidbody>();
+            if (rb == null) rb = tabletObj.AddComponent<Rigidbody>();
+            rb.mass = 0.5f;
+            rb.isKinematic = true; // Estable sobre la mesa al iniciar
+            rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
+
+            // 3. Asegurar BoxCollider ajustado a la tableta
+            var bc = tabletObj.GetComponent<BoxCollider>();
+            if (bc == null) bc = tabletObj.AddComponent<BoxCollider>();
+            bc.center = new Vector3(0.08f, 0.65f, 5.87f);
+            bc.size = new Vector3(10.5f, 6.5f, 0.6f);
+
+            // 4. Configurar XRGrabInteractable para sostener con la mano
+            var grab = tabletObj.GetComponent<XRGrabInteractable>();
+            if (grab == null) grab = tabletObj.AddComponent<XRGrabInteractable>();
+            grab.movementType = XRBaseInteractable.MovementType.VelocityTracking;
+            grab.throwOnDetach = false;
+
+            // Punto de agarre ergonómico lateral/inferior para sostener con naturalidad
+            Transform attachPoint = tabletObj.transform.Find("VRTabletAttachPoint");
+            if (attachPoint == null)
             {
-                TabletManager.Instance.ToggleTablet();
+                GameObject ap = new GameObject("VRTabletAttachPoint");
+                ap.transform.SetParent(tabletObj.transform, false);
+                ap.transform.localPosition = new Vector3(-0.5f, 0f, 5.87f);
+                ap.transform.localRotation = Quaternion.Euler(0, 0, 90f);
+                attachPoint = ap.transform;
             }
+            grab.attachTransform = attachPoint;
+
+            grab.selectEntered.RemoveListener(OnTabletGrabbed);
+            grab.selectEntered.AddListener(OnTabletGrabbed);
+            grab.selectExited.RemoveListener(OnTabletReleased);
+            grab.selectExited.AddListener(OnTabletReleased);
+
+            // 5. Montar el lienzo UI directamente sobre la pantalla física 3D de la tableta
+            MountTabletCanvasOnScreen(tabletObj);
+            Debug.Log("<color=green>[XR Manager]</color> Tableta configurada como objeto físico para sostener con la mano.");
+        }
+
+        private void OnTabletGrabbed(SelectEnterEventArgs args)
+        {
+            var rb = args.interactableObject.transform.GetComponent<Rigidbody>();
+            if (rb != null)
+            {
+                rb.isKinematic = false;
+                rb.useGravity = true;
+            }
+
+            if (TabletManager.Instance != null && !TabletManager.Instance.IsTabletOpen)
+            {
+                TabletManager.Instance.OpenTablet();
+            }
+            Debug.Log("<color=green>[XR Manager]</color> Tableta agarrada y sostenida en la mano VR.");
+        }
+
+        private void OnTabletReleased(SelectExitEventArgs args)
+        {
+            Debug.Log("<color=cyan>[XR Manager]</color> Tableta soltada de la mano VR.");
+        }
+
+        public void MountTabletCanvasOnScreen(GameObject tabletObj)
+        {
+            if (tabletObj == null) return;
+            Transform pantalla = tabletObj.transform.Find("ModeloTableta/Pantalla");
+            if (pantalla == null) return;
+
+            GameObject canvasObj = GameObject.Find("TabletCanvas");
+            if (canvasObj == null)
+            {
+                var canvases = Resources.FindObjectsOfTypeAll<Canvas>();
+                for (int i = 0; i < canvases.Length; i++)
+                {
+                    if (canvases[i].gameObject.name == "TabletCanvas")
+                    {
+                        canvasObj = canvases[i].gameObject;
+                        break;
+                    }
+                }
+            }
+            if (canvasObj == null) return;
+
+            Canvas canvas = canvasObj.GetComponent<Canvas>();
+            if (canvas != null)
+            {
+                canvas.renderMode = RenderMode.WorldSpace;
+            }
+
+            // Anclar directamente al frente de la pantalla física 3D
+            canvasObj.transform.SetParent(pantalla, false);
+            canvasObj.transform.localPosition = new Vector3(0, 0, 0.12f);
+            canvasObj.transform.localRotation = Quaternion.identity;
+
+            RectTransform rt = canvasObj.GetComponent<RectTransform>();
+            if (rt != null)
+            {
+                rt.sizeDelta = new Vector2(1600, 1000);
+                rt.localScale = new Vector3(9.32f / 1600f, 5.53f / 1000f, 1f);
+            }
+
+            // En VR vemos el mundo real detrás de la tableta: ocultar Backdrop negro de PC
+            Transform backdrop = canvasObj.transform.Find("Backdrop");
+            if (backdrop != null) backdrop.gameObject.SetActive(false);
+
+            // Ajustar el marco interactivo para que coincida exactamente con la pantalla
+            RectTransform frame = canvasObj.transform.Find("TabletDeviceFrame")?.GetComponent<RectTransform>();
+            if (frame != null)
+            {
+                frame.anchorMin = Vector2.zero;
+                frame.anchorMax = Vector2.one;
+                frame.offsetMin = Vector2.zero;
+                frame.offsetMax = Vector2.zero;
+            }
+
+            // Asegurar raycaster de realidad virtual
+            var raycaster = canvasObj.GetComponent<TrackedDeviceGraphicRaycaster>();
+            if (raycaster == null) canvasObj.AddComponent<TrackedDeviceGraphicRaycaster>();
+
+            canvasObj.SetActive(true);
         }
 
         private void OnDispenserSelected(SelectEnterEventArgs args)
@@ -330,51 +573,34 @@ namespace ArtSimulator
 
         private void ConfigureTabletCanvasForVR()
         {
-            GameObject canvasObj = GameObject.Find("TabletCanvas");
-            if (canvasObj != null)
+            GameObject tabletaObj = GameObject.Find("Tableta");
+            if (tabletaObj != null)
             {
-                var raycaster = canvasObj.GetComponent<TrackedDeviceGraphicRaycaster>();
-                if (raycaster == null)
-                {
-                    canvasObj.AddComponent<TrackedDeviceGraphicRaycaster>();
-                }
+                MountTabletCanvasOnScreen(tabletaObj);
             }
         }
 
         private void OnTabletVisibilityChanged(bool isOpen)
         {
             GameObject canvasObj = GameObject.Find("TabletCanvas");
+            if (canvasObj == null)
+            {
+                var canvases = Resources.FindObjectsOfTypeAll<Canvas>();
+                for (int i = 0; i < canvases.Length; i++)
+                {
+                    if (canvases[i].gameObject.name == "TabletCanvas") { canvasObj = canvases[i].gameObject; break; }
+                }
+            }
             if (canvasObj == null) return;
 
-            Canvas canvas = canvasObj.GetComponent<Canvas>();
-            if (canvas == null) return;
+            // En Realidad Virtual, la pantalla SIEMPRE permanece fijada a la tableta física en la mano
+            GameObject tabletaObj = GameObject.Find("Tableta");
+            if (tabletaObj != null)
+            {
+                MountTabletCanvasOnScreen(tabletaObj);
+            }
 
-            if (isVRActive)
-            {
-                // En Realidad Virtual, la tableta se posiciona en el espacio 3D flotando frente al jugador
-                if (isOpen)
-                {
-                    canvas.renderMode = RenderMode.WorldSpace;
-                    Camera vrCam = Camera.main;
-                    if (vrCam != null)
-                    {
-                        canvasObj.transform.position = vrCam.transform.position + vrCam.transform.forward * 0.95f + Vector3.down * 0.05f;
-                        canvasObj.transform.rotation = Quaternion.LookRotation(canvasObj.transform.position - vrCam.transform.position);
-                        canvasObj.transform.localScale = Vector3.one * 0.00085f;
-                    }
-                    canvasObj.SetActive(true);
-                }
-                else
-                {
-                    canvasObj.SetActive(false);
-                }
-            }
-            else
-            {
-                // En modo Desktop se mantiene la pantalla superpuesta original
-                canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-                canvasObj.SetActive(isOpen);
-            }
+            canvasObj.SetActive(isOpen);
         }
 
         private void SpawnVRPenOnDesk()

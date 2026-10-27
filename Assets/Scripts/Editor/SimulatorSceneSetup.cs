@@ -121,6 +121,14 @@ namespace ArtSimulator.Editor
                 Debug.Log("<color=green>[Simulador]</color> FirstPersonPlayerController añadido a la cámara principal.");
             }
 
+            // 7. Administrador de Realidad Virtual (XRPlayerRigManager)
+            if (Object.FindAnyObjectByType<XRPlayerRigManager>() == null)
+            {
+                GameObject xrManagerObj = new GameObject("XRPlayerRigManager");
+                xrManagerObj.AddComponent<XRPlayerRigManager>();
+                Debug.Log("<color=green>[Simulador]</color> XRPlayerRigManager añadido a la escena.");
+            }
+
             EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
             Debug.Log("<color=cyan><b>[Simulador] ¡Configuración completada! Ya puedes pulsar Play para probar todo el flujo.</b></color>");
         }

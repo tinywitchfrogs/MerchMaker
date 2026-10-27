@@ -86,7 +86,6 @@ public class MenuPausa : MonoBehaviour
                 resumeBtn.onClick.AddListener(Resume);
                 var trig = resumeBtn.GetComponent<ArtSimulator.TabletButtonTrigger>() ?? resumeBtn.gameObject.AddComponent<ArtSimulator.TabletButtonTrigger>();
                 trig.SetAction("Resumir", Resume);
-                resumeBtn.transform.SetAsLastSibling();
             }
 
             var homeBtn = pauseMenu.transform.Find("HomeButton")?.GetComponent<UnityEngine.UI.Button>();
@@ -103,6 +102,65 @@ public class MenuPausa : MonoBehaviour
                 var trig = homeBtn.GetComponent<ArtSimulator.TabletButtonTrigger>() ?? homeBtn.gameObject.AddComponent<ArtSimulator.TabletButtonTrigger>();
                 trig.SetAction("Salir", Home);
             }
+
+            // Botón de alternar Realidad Virtual / Escritorio
+            var vrBtnTransform = pauseMenu.transform.Find("VRButton");
+            if (vrBtnTransform == null && resumeBtn != null)
+            {
+                GameObject newVrBtn = Instantiate(resumeBtn.gameObject, pauseMenu.transform);
+                newVrBtn.name = "VRButton";
+                vrBtnTransform = newVrBtn.transform;
+            }
+
+            if (vrBtnTransform != null)
+            {
+                var vrBtn = vrBtnTransform.GetComponent<UnityEngine.UI.Button>();
+                var vrRt = vrBtnTransform.GetComponent<RectTransform>();
+                var resumeRt = resumeBtn != null ? resumeBtn.GetComponent<RectTransform>() : null;
+                var homeRt = homeBtn != null ? homeBtn.GetComponent<RectTransform>() : null;
+
+                if (resumeRt != null) resumeRt.anchoredPosition = new Vector2(0, 75);
+                if (vrRt != null) vrRt.anchoredPosition = new Vector2(0, 0);
+                if (homeRt != null) homeRt.anchoredPosition = new Vector2(0, -75);
+
+                if (vrBtn != null)
+                {
+                    vrBtn.interactable = true;
+                    var img = vrBtn.GetComponent<UnityEngine.UI.Image>();
+                    if (img != null) img.raycastTarget = true;
+
+                    UpdateVRButtonLabel(vrBtnTransform);
+
+                    vrBtn.onClick.RemoveListener(OnVRButtonClicked);
+                    vrBtn.onClick.AddListener(OnVRButtonClicked);
+                    var trig = vrBtn.GetComponent<ArtSimulator.TabletButtonTrigger>() ?? vrBtn.gameObject.AddComponent<ArtSimulator.TabletButtonTrigger>();
+                    trig.SetAction("AlternarVR", OnVRButtonClicked);
+                }
+            }
+        }
+    }
+
+    public void OnVRButtonClicked()
+    {
+        if (ArtSimulator.XRPlayerRigManager.Instance != null)
+        {
+            ArtSimulator.XRPlayerRigManager.Instance.ToggleVRMode();
+        }
+        var vrBtnTransform = pauseMenu != null ? pauseMenu.transform.Find("VRButton") : null;
+        if (vrBtnTransform != null)
+        {
+            UpdateVRButtonLabel(vrBtnTransform);
+        }
+    }
+
+    private void UpdateVRButtonLabel(Transform vrBtnTransform)
+    {
+        var tmp = vrBtnTransform.GetComponentInChildren<TMPro.TMP_Text>();
+        if (tmp != null)
+        {
+            tmp.raycastTarget = false;
+            bool isVR = ArtSimulator.XRPlayerRigManager.Instance != null && ArtSimulator.XRPlayerRigManager.Instance.IsVRActive;
+            tmp.text = isVR ? "Modo: VR Activado (F12)" : "Modo: PC / Teclado (F12)";
         }
     }
 
@@ -145,6 +203,14 @@ public class MenuPausa : MonoBehaviour
                 {
                     Debug.Log("<color=green>[MenuPausa]</color> Clic directo detectado en Resumir");
                     Resume();
+                    return;
+                }
+
+                var vrBtn = pauseMenu.transform.Find("VRButton")?.GetComponent<RectTransform>();
+                if (vrBtn != null && RectTransformUtility.RectangleContainsScreenPoint(vrBtn, mousePos, null))
+                {
+                    Debug.Log("<color=green>[MenuPausa]</color> Clic directo detectado en Alternar VR");
+                    OnVRButtonClicked();
                     return;
                 }
 
