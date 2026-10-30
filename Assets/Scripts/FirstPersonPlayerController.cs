@@ -64,6 +64,12 @@ namespace ArtSimulator
 
         private void Awake()
         {
+            if (Application.platform == RuntimePlatform.Android)
+            {
+                enabled = false;
+                return;
+            }
+
             if (Instance == null) Instance = this;
 
             playerCamera = GetComponent<Camera>();

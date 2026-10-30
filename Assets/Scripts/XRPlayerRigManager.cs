@@ -332,7 +332,7 @@ namespace ArtSimulator
                 }
             }
 
-            // 2. Instanciar Simulador si estamos en el Editor sin visor físico conectado
+            // 2. Instanciar Simulador SOLO en el Editor cuando no hay visor fisico conectado
             if (Application.isEditor && !CheckPhysicalVRDevice())
             {
                 if (spawnedSimulator == null)
@@ -371,27 +371,50 @@ namespace ArtSimulator
                     spawnedSimulator.SetActive(true);
                 }
             }
-
-            // 3. Desactivar cámara, controlador y HUD de primera persona de escritorio
-            var currentDesktopPlayer = FirstPersonPlayerController.Instance != null ? FirstPersonPlayerController.Instance : FindAnyObjectByType<FirstPersonPlayerController>();
-            if (currentDesktopPlayer != null)
+            else
             {
-                Camera desktopCam = currentDesktopPlayer.GetComponent<Camera>();
-                if (desktopCam != null)
+                // En visor real (Meta Quest) o Android, destruir cualquier simulador de editor remanente
+                var existingSims = FindObjectsByType<UnityEngine.XR.Interaction.Toolkit.Inputs.Simulation.XRInteractionSimulator>(FindObjectsInactive.Include);
+                for (int i = 0; i < existingSims.Length; i++)
                 {
-                    desktopCam.enabled = false;
-                    desktopCam.tag = "Untagged";
+                    if (existingSims[i] != null)
+                    {
+                        existingSims[i].gameObject.SetActive(false);
+                        Destroy(existingSims[i].gameObject);
+                    }
                 }
-                AudioListener desktopAudio = currentDesktopPlayer.GetComponent<AudioListener>();
-                if (desktopAudio != null)
-                {
-                    desktopAudio.enabled = false;
-                }
-                currentDesktopPlayer.enabled = false;
-                currentDesktopPlayer.SetCrosshairVisible(false);
             }
 
-            // Ocultar cualquier HUD 2D de pantalla residual en VR para que no flote sobre la visión
+            // 3. Identificar la camara de Realidad Virtual del XR Origin
+            Camera vrCam = null;
+            if (spawnedXROrigin != null)
+            {
+                vrCam = spawnedXROrigin.GetComponentInChildren<Camera>(true);
+            }
+
+            // 4. Desactivar de forma exhaustiva TODAS las demas camaras y AudioListeners
+            var allCameras = FindObjectsByType<Camera>(FindObjectsInactive.Include);
+            for (int i = 0; i < allCameras.Length; i++)
+            {
+                Camera c = allCameras[i];
+                if (c != null && c != vrCam && (spawnedXROrigin == null || !c.transform.IsChildOf(spawnedXROrigin.transform)))
+                {
+                    c.enabled = false;
+                    c.tag = "Untagged";
+                    var al = c.GetComponent<AudioListener>();
+                    if (al != null) al.enabled = false;
+
+                    var fpc = c.GetComponent<FirstPersonPlayerController>();
+                    if (fpc != null) fpc.enabled = false;
+
+                    if (Application.platform == RuntimePlatform.Android)
+                    {
+                        c.gameObject.SetActive(false);
+                    }
+                }
+            }
+
+            // Ocultar cualquier HUD 2D residual de escritorio en VR
             var allCanvases = FindObjectsByType<Canvas>(FindObjectsInactive.Include);
             for (int i = 0; i < allCanvases.Length; i++)
             {
@@ -401,23 +424,19 @@ namespace ArtSimulator
                 }
             }
 
-            // Asegurar que la cámara del XR Origin sea la MainCamera activa
-            if (spawnedXROrigin != null)
+            // Activar la camara VR como la unica MainCamera oficial del juego
+            if (vrCam != null)
             {
-                Camera vrCam = spawnedXROrigin.GetComponentInChildren<Camera>();
-                if (vrCam != null)
-                {
-                    vrCam.tag = "MainCamera";
-                    vrCam.enabled = true;
-                    AudioListener vrAudio = vrCam.GetComponent<AudioListener>();
-                    if (vrAudio != null) vrAudio.enabled = true;
-                }
+                vrCam.tag = "MainCamera";
+                vrCam.enabled = true;
+                AudioListener vrAudio = vrCam.GetComponent<AudioListener>();
+                if (vrAudio != null) vrAudio.enabled = true;
             }
 
-            // 4. Adaptar EventSystem para Realidad Virtual con XRUIInputModule
+            // 5. Adaptar EventSystem para Realidad Virtual con XRUIInputModule
             ConfigureEventSystemForVR();
 
-            // 5. Configurar objetos interactivos
+            // 6. Configurar objetos interactivos
             SetupVRInteractables();
 
             Debug.Log("<color=green>[XR Manager]</color> <b>Modo Realidad Virtual (VR) ACTIVADO</b>. XR Origin configurado en la oficina.");

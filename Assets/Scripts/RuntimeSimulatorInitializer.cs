@@ -127,11 +127,14 @@ namespace ArtSimulator
 #endif
             }
 
-            // 6. Controlador de Jugador FirstPersonPlayerController
-            Camera cam = Camera.main;
-            if (cam != null && cam.GetComponent<FirstPersonPlayerController>() == null)
+            // 6. Controlador de Jugador FirstPersonPlayerController (solo PC/Editor)
+            if (Application.platform != RuntimePlatform.Android)
             {
-                cam.gameObject.AddComponent<FirstPersonPlayerController>();
+                Camera cam = Camera.main;
+                if (cam != null && cam.GetComponent<FirstPersonPlayerController>() == null)
+                {
+                    cam.gameObject.AddComponent<FirstPersonPlayerController>();
+                }
             }
 
             // 7. Caja de Envíos (SendProduct)

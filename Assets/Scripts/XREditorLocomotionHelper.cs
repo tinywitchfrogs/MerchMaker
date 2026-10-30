@@ -31,6 +31,12 @@ namespace ArtSimulator
 
         private void Awake()
         {
+            if (Application.platform == RuntimePlatform.Android)
+            {
+                enabled = false;
+                return;
+            }
+
             characterController = GetComponent<CharacterController>();
             if (characterController == null)
             {
