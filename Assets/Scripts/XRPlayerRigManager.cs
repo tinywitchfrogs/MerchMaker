@@ -181,6 +181,9 @@ namespace ArtSimulator
 
         public bool CheckPhysicalVRDevice()
         {
+            // En Android (Meta Quest), siempre es un visor VR físico
+            if (Application.platform == RuntimePlatform.Android) return true;
+
             // 1. Verificar si hay un visor físico conectado (HMD) detectado por InputDevices
             var inputDevices = new List<UnityEngine.XR.InputDevice>();
             UnityEngine.XR.InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.HeadMounted, inputDevices);
@@ -206,8 +209,9 @@ namespace ArtSimulator
 
         private void DetermineAndSetupVR()
         {
+            bool isMobileVR = Application.platform == RuntimePlatform.Android;
             bool hasPhysicalHMD = CheckPhysicalVRDevice();
-            bool shouldEnableVR = !forceDesktopMode && (hasPhysicalHMD || (Application.isEditor && enableVRInEditor));
+            bool shouldEnableVR = !forceDesktopMode && (isMobileVR || hasPhysicalHMD || (Application.isEditor && enableVRInEditor));
 
             if (shouldEnableVR)
             {
