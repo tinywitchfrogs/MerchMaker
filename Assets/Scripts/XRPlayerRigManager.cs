@@ -429,6 +429,23 @@ namespace ArtSimulator
             {
                 vrCam.tag = "MainCamera";
                 vrCam.enabled = true;
+                vrCam.stereoTargetEye = StereoTargetEyeMask.Both;
+                vrCam.allowHDR = false;
+                vrCam.allowMSAA = false;
+
+                var uacd = vrCam.GetComponent<UnityEngine.Rendering.Universal.UniversalAdditionalCameraData>();
+                if (uacd == null)
+                {
+                    uacd = vrCam.gameObject.AddComponent<UnityEngine.Rendering.Universal.UniversalAdditionalCameraData>();
+                }
+                if (uacd != null)
+                {
+                    uacd.allowXRRendering = true;
+                    uacd.allowHDROutput = false;
+                    uacd.renderPostProcessing = false;
+                    uacd.renderShadows = true;
+                }
+
                 AudioListener vrAudio = vrCam.GetComponent<AudioListener>();
                 if (vrAudio != null) vrAudio.enabled = true;
             }
