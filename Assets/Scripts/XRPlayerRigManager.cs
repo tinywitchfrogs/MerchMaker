@@ -223,6 +223,33 @@ namespace ArtSimulator
             }
         }
 
+        private System.Collections.IEnumerator AlignPlayerToDeskRoutine()
+        {
+            // Esperar 1-2 frames para recibir la orientación real del visor físico en OpenXR
+            yield return null;
+            yield return new WaitForEndOfFrame();
+
+            if (spawnedXROrigin != null)
+            {
+                Camera vrCam = spawnedXROrigin.GetComponentInChildren<Camera>();
+                Vector3 deskCenter = new Vector3(8.55f, -0.28f, -7.15f);
+
+                Vector3 camPos = vrCam != null ? vrCam.transform.position : spawnedXROrigin.transform.position;
+                Vector3 toDesk = deskCenter - camPos;
+                toDesk.y = 0f;
+
+                if (toDesk.sqrMagnitude > 0.01f)
+                {
+                    Quaternion desiredHeadRot = Quaternion.LookRotation(toDesk.normalized, Vector3.up);
+                    float headYaw = vrCam != null ? vrCam.transform.localEulerAngles.y : 0f;
+                    Quaternion headYawRot = Quaternion.Euler(0f, headYaw, 0f);
+
+                    spawnedXROrigin.transform.rotation = desiredHeadRot * Quaternion.Inverse(headYawRot);
+                    Debug.Log($"<color=green>[XR Manager]</color> Vista inicial alineada hacia el escritorio. HeadYaw={headYaw:F1}°, RigYaw={spawnedXROrigin.transform.eulerAngles.y:F1}°");
+                }
+            }
+        }
+
         public void EnableVRRig()
         {
             isVRActive = true;
@@ -258,7 +285,7 @@ namespace ArtSimulator
                 if (xrOriginPrefab != null)
                 {
                     var playerCtrl = FirstPersonPlayerController.Instance != null ? FirstPersonPlayerController.Instance : FindAnyObjectByType<FirstPersonPlayerController>();
-                    Vector3 spawnPos = new Vector3(5.20f, 0.57f, -8.00f);
+                    Vector3 spawnPos = new Vector3(8.55f, -1.17f, -8.15f);
                     if (playerCtrl != null)
                     {
                         spawnPos = playerCtrl.transform.position;
@@ -306,6 +333,10 @@ namespace ArtSimulator
             if (spawnedXROrigin != null)
             {
                 spawnedXROrigin.SetActive(true);
+
+                // Alinear automáticamente la vista del jugador hacia el escritorio al iniciar en VR
+                spawnedXROrigin.transform.rotation = Quaternion.identity;
+                StartCoroutine(AlignPlayerToDeskRoutine());
 
                 // Integrar XREditorLocomotionHelper para movimiento fluido con WASD + ratón en Editor y VR
                 if (spawnedXROrigin.GetComponent<XREditorLocomotionHelper>() == null)
@@ -600,6 +631,9 @@ namespace ArtSimulator
         {
             if (tabletObj == null) return;
 
+            // Escala ergonómica y proporcionada para Realidad Virtual (equivalente a 11-12 pulgadas)
+            tabletObj.transform.localScale = new Vector3(0.040f, 0.040f, 0.040f);
+
             // 1. Remover interactuable simple previo
             var simpleInt = tabletObj.GetComponent<XRSimpleInteractable>();
             if (simpleInt != null) Destroy(simpleInt);
@@ -618,11 +652,16 @@ namespace ArtSimulator
             bc.size = new Vector3(6.5f, 10.5f, 1.2f);
             bc.enabled = true;
 
-            // 4. Configurar XRGrabInteractable para sostener con la mano y rayo
+            // 4. Configurar XRGrabInteractable para sostener directamente en la mano (sin flotar a distancia con el láser)
             var grab = tabletObj.GetComponent<XRGrabInteractable>();
             if (grab == null) grab = tabletObj.AddComponent<XRGrabInteractable>();
             grab.movementType = XRBaseInteractable.MovementType.VelocityTracking;
-            grab.throwOnDetach = false;
+            grab.throwOnDetach = true;
+            grab.useDynamicAttach = false;
+            grab.matchAttachPosition = false;
+            grab.matchAttachRotation = false;
+            grab.snapToColliderVolume = false;
+            grab.attachEaseInTime = 0.15f;
 
             // Registrar explícitamente el BoxCollider en los colisionadores de agarre del interactuable
             if (!grab.colliders.Contains(bc))
@@ -631,7 +670,7 @@ namespace ArtSimulator
                 grab.colliders.Add(bc);
             }
 
-            // Punto de agarre ergonómico centrado para sostener con naturalidad
+            // Punto de agarre ergonómico: la tableta se acomoda naturalmente en la mano mirando al jugador
             Transform attachPoint = tabletObj.transform.Find("VRTabletAttachPoint");
             if (attachPoint == null)
             {
@@ -639,9 +678,21 @@ namespace ArtSimulator
                 ap.transform.SetParent(tabletObj.transform, false);
                 attachPoint = ap.transform;
             }
-            attachPoint.localPosition = new Vector3(0.09f, 5.87f, -0.43f);
-            attachPoint.localRotation = Quaternion.Euler(0f, 0f, -90f); // Alinea el borde superior con el vector arriba del mando VR
+            // Agarre ergonomico desde el marco lateral (bezel izquierdo) para no tapar la pantalla
+            attachPoint.localPosition = new Vector3(-3.20f, 5.87f, -0.43f);
+            attachPoint.localRotation = Quaternion.Euler(0f, 0f, -90f);
             grab.attachTransform = attachPoint;
+
+            // Ignorar colisiones físicas entre la tableta y los dibujos/copias para que no choquen al tomar fotos
+            var allDrawings = FindObjectsByType<ScannableDrawing>(FindObjectsInactive.Include);
+            for (int i = 0; i < allDrawings.Length; i++)
+            {
+                var dCol = allDrawings[i].GetComponent<Collider>();
+                if (dCol != null && bc != null)
+                {
+                    Physics.IgnoreCollision(bc, dCol, true);
+                }
+            }
 
             grab.selectEntered.RemoveListener(OnTabletGrabbed);
             grab.selectEntered.AddListener(OnTabletGrabbed);
@@ -671,7 +722,13 @@ namespace ArtSimulator
 
         private void OnTabletReleased(SelectExitEventArgs args)
         {
-            Debug.Log("<color=cyan>[XR Manager]</color> Tableta soltada de la mano VR.");
+            var rb = args.interactableObject.transform.GetComponent<Rigidbody>();
+            if (rb != null)
+            {
+                rb.isKinematic = false;
+                rb.useGravity = true;
+            }
+            Debug.Log("<color=cyan>[XR Manager]</color> Tableta soltada de la mano VR y cae con gravedad.");
         }
 
         public void MountTabletCanvasOnScreen(GameObject tabletObj)
@@ -786,14 +843,82 @@ namespace ArtSimulator
             {
                 var bc = drawingObj.AddComponent<BoxCollider>();
                 bc.size = new Vector3(10f, 0.5f, 10f);
+                col = bc;
+            }
+
+            // Ignorar colisión física con la Tableta para que no choquen al acercar la hoja a la cámara
+            GameObject tabletaObj = GameObject.Find("Tableta");
+            if (tabletaObj != null && col != null)
+            {
+                var tabCol = tabletaObj.GetComponent<Collider>();
+                if (tabCol != null)
+                {
+                    Physics.IgnoreCollision(col, tabCol, true);
+                }
             }
 
             var grab = drawingObj.GetComponent<XRGrabInteractable>();
             if (grab == null)
             {
                 grab = drawingObj.AddComponent<XRGrabInteractable>();
-                grab.movementType = XRBaseInteractable.MovementType.VelocityTracking;
-                grab.throwOnDetach = true;
+            }
+            grab.movementType = XRBaseInteractable.MovementType.VelocityTracking;
+            grab.throwOnDetach = true;
+            grab.useDynamicAttach = false;
+            grab.matchAttachPosition = false;
+            grab.matchAttachRotation = false;
+            grab.snapToColliderVolume = false;
+            grab.attachEaseInTime = 0.15f;
+
+            // Punto de agarre ergonómico en la mano: sujeta la hoja por el borde inferior
+            // e inclinada 55° mirando de frente a la vista del jugador y la cámara de la tableta
+            Transform attachPoint = drawingObj.transform.Find("DrawingVRHandAttach");
+            if (attachPoint == null)
+            {
+                GameObject ap = new GameObject("DrawingVRHandAttach");
+                ap.transform.SetParent(drawingObj.transform, false);
+                attachPoint = ap.transform;
+            }
+            attachPoint.localPosition = new Vector3(0f, 0f, -4.5f);
+            attachPoint.localRotation = Quaternion.Euler(-55f, 0f, 0f);
+            grab.attachTransform = attachPoint;
+
+            grab.selectExited.RemoveListener(OnDrawingReleased);
+            grab.selectExited.AddListener(OnDrawingReleased);
+            grab.selectEntered.RemoveListener(OnDrawingGrabbed);
+            grab.selectEntered.AddListener(OnDrawingGrabbed);
+        }
+
+        private void OnDrawingReleased(SelectExitEventArgs args)
+        {
+            if (args != null && args.interactableObject != null)
+            {
+                var rb = args.interactableObject.transform.GetComponent<Rigidbody>();
+                if (rb != null)
+                {
+                    rb.isKinematic = false;
+                    rb.useGravity = true;
+                }
+            }
+        }
+
+        private void OnDrawingGrabbed(SelectEnterEventArgs args)
+        {
+            if (args != null && args.interactableObject != null)
+            {
+                var rb = args.interactableObject.transform.GetComponent<Rigidbody>();
+                if (rb != null)
+                {
+                    rb.isKinematic = false;
+                }
+                if (PrinterController.Instance != null && PrinterController.Instance.CurrentInsertedDrawing != null)
+                {
+                    var scannable = args.interactableObject.transform.GetComponent<ScannableDrawing>();
+                    if (scannable != null && PrinterController.Instance.CurrentInsertedDrawing == scannable)
+                    {
+                        PrinterController.Instance.RetrieveDrawing();
+                    }
+                }
             }
         }
 
@@ -830,7 +955,8 @@ namespace ArtSimulator
             // Crear un lápiz 3D ergonómico en la mesa de dibujo
             GameObject penObj = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             penObj.name = "VRPen_Stylus";
-            penObj.transform.position = new Vector3(8.55f, 0.61f, -6.85f);
+            // Apoyado sobre la mesa al lado de las hojas
+            penObj.transform.position = new Vector3(8.55f, -0.28f, -7.05f);
             penObj.transform.rotation = Quaternion.Euler(0, 45f, 90f);
             penObj.transform.localScale = new Vector3(0.02f, 0.10f, 0.02f);
 
@@ -839,8 +965,26 @@ namespace ArtSimulator
             rb.mass = 0.05f;
             rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
 
+            // Punto de agarre ergonomico: la punta del cilindro (+Y) se alinea exactamente
+            // con el puntero/frente del mando Quest (+Z) para usar la punta del mando como lapiz
+            Transform penAttach = penObj.transform.Find("VRPenAttachPoint");
+            if (penAttach == null)
+            {
+                GameObject ap = new GameObject("VRPenAttachPoint");
+                ap.transform.SetParent(penObj.transform, false);
+                penAttach = ap.transform;
+            }
+            penAttach.localPosition = new Vector3(0f, 0.40f, 0f);
+            penAttach.localRotation = Quaternion.Euler(-90f, 0f, 0f);
+
             var grab = penObj.AddComponent<XRGrabInteractable>();
             grab.movementType = XRBaseInteractable.MovementType.VelocityTracking;
+            grab.useDynamicAttach = false;
+            grab.matchAttachPosition = false;
+            grab.matchAttachRotation = false;
+            grab.snapToColliderVolume = false;
+            grab.attachEaseInTime = 0.12f;
+            grab.attachTransform = penAttach;
 
             // Punta del lápiz interactiva
             GameObject tipObj = GameObject.CreatePrimitive(PrimitiveType.Sphere);

@@ -242,19 +242,19 @@ namespace ArtSimulator
             hlg.childForceExpandHeight = false;
 
             // 1. Galería de Fotos
-            CreateAppIcon(appsContainer.transform, "Galería de Fotos", new Color(0.12f, 0.48f, 0.95f), "🖼️", "[1] Ver e Imprimir Fotos", () =>
+            CreateAppIcon(appsContainer.transform, "Galería de Fotos", new Color(0.12f, 0.48f, 0.95f), "🖼️", "Ver e Imprimir Fotos", () =>
             {
                 TabletManager.Instance?.ShowImages();
             });
 
             // 2. Cámara
-            CreateAppIcon(appsContainer.transform, "Cámara", new Color(0.18f, 0.22f, 0.28f), "📷", "[2] Tomar Fotos", () =>
+            CreateAppIcon(appsContainer.transform, "Cámara", new Color(0.18f, 0.22f, 0.28f), "📷", "Tomar Fotos", () =>
             {
                 TabletManager.Instance?.ShowCamera();
             });
 
             // 3. Tienda de Arte
-            CreateAppIcon(appsContainer.transform, "Tienda de Arte", new Color(0.92f, 0.50f, 0.08f), "🛍️", "[3] Vender y Pedidos", () =>
+            CreateAppIcon(appsContainer.transform, "Tienda de Arte", new Color(0.92f, 0.50f, 0.08f), "🛍️", "Vender y Pedidos", () =>
             {
                 TabletManager.Instance?.ShowStore();
             });

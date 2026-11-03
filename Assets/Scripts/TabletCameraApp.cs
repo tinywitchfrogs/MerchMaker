@@ -391,8 +391,7 @@ namespace ArtSimulator
                 viewfinderDisplay.rectTransform.localScale = new Vector3(-1f, 1f, 1f);
             }
 
-            // Ocultar auras de dibujos para que no aparezcan en el visor ni en las fotos
-            ScannableDrawing.SetAllAurasVisible(false);
+            // En VR las auras se mantienen visibles en el mundo físico para ubicar las hojas fácilmente
         }
 
         private void OnDisable()
@@ -424,6 +423,8 @@ namespace ArtSimulator
             PlayShutterClick();
 
             tabletCamera.Render();
+            // Restaurar inmediatamente la visibilidad de las auras de color para el jugador
+            ScannableDrawing.SetAllAurasVisible(true);
 
             RenderTexture prevRT = RenderTexture.active;
             RenderTexture.active = cameraRenderTexture;

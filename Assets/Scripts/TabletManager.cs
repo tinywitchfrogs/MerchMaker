@@ -195,15 +195,8 @@ namespace ArtSimulator
             currentScreen = screen;
             OnScreenChanged?.Invoke(currentScreen);
 
-            // En modo cámara las auras se ocultan para no arruinar el encuadre fotográfico
-            if (currentScreen == TabletScreen.Camera)
-            {
-                ScannableDrawing.SetAllAurasVisible(false);
-            }
-            else
-            {
-                ScannableDrawing.SetAllAurasVisible(true);
-            }
+            // Las auras de color se mantienen siempre visibles en el mundo para no perder las hojas
+            ScannableDrawing.SetAllAurasVisible(true);
 
             var ui = GetComponent<TabletUIController>();
             if (ui != null)

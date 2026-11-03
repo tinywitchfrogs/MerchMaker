@@ -53,12 +53,44 @@ namespace ArtSimulator
 
         private void Update()
         {
-            // Solo dibujar si el lápiz está siendo sostenido por el jugador y tocando un lienzo de dibujo
-            if (grabInteractable != null && grabInteractable.isSelected && isTouchingCanvas && currentCanvas != null)
+            // Solo dibujar si el lápiz está siendo sostenido por el jugador
+            if (grabInteractable != null && grabInteractable.isSelected)
             {
-                currentCanvas.SetBrushColor(penColor);
-                currentCanvas.SetBrushSize(brushSize);
-                currentCanvas.DrawAtWorldPoint(tipTransform.position);
+                Vector3 tipPos = tipTransform != null ? tipTransform.position : transform.position;
+                Vector3 dir = transform.up; // Eje longitudinal de la punta del lápiz
+
+                // 1. Raycast corto hacia adelante de la punta para detectar contacto directo con la hoja
+                bool hitSurface = false;
+                if (Physics.Raycast(tipPos - dir * 0.015f, dir, out RaycastHit hit, 0.05f))
+                {
+                    var canvas = hit.collider.GetComponent<DrawingCanvas>() ?? hit.collider.GetComponentInParent<DrawingCanvas>();
+                    if (canvas != null)
+                    {
+                        hitSurface = true;
+                        currentCanvas = canvas;
+                        isTouchingCanvas = true;
+                        currentCanvas.SetBrushColor(penColor);
+                        currentCanvas.SetBrushSize(brushSize);
+                        currentCanvas.DrawAtWorldPoint(hit.point);
+                    }
+                }
+
+                // 2. Fallback por esfera de contacto o triggers
+                if (!hitSurface && isTouchingCanvas && currentCanvas != null)
+                {
+                    currentCanvas.SetBrushColor(penColor);
+                    currentCanvas.SetBrushSize(brushSize);
+                    currentCanvas.DrawAtWorldPoint(tipPos);
+                }
+            }
+            else
+            {
+                if (currentCanvas != null)
+                {
+                    currentCanvas.StopStroke();
+                    currentCanvas = null;
+                }
+                isTouchingCanvas = false;
             }
         }
 
