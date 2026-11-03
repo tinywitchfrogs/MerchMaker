@@ -135,11 +135,14 @@ namespace ArtSimulator
                 if (d == lastRetrievedDrawing && Time.time - lastRetrieveTime < 2.5f) continue;
 
                 float dist = Vector3.Distance(d.transform.position, scannerPos);
-                // Si el dibujo está sobre el escáner o en la mesa junto a la impresora (radio 0.65m)
-                if (dist < 0.65f)
+                var grab = d.GetComponent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRGrabInteractable>();
+                bool isBeingHeld = grab != null && grab.isSelected;
+
+                // Solo colocar si se apoya intencionalmente en el cristal (< 0.20m) o si fue soltado/arrojado encima (< 0.35m)
+                bool shouldInsert = isBeingHeld ? (dist < 0.28f) : (dist < 0.42f);
+                if (shouldInsert)
                 {
                     // Si el jugador lo tiene en su mano en VR, soltarlo suavemente de la mano
-                    var grab = d.GetComponent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRGrabInteractable>();
                     if (grab != null && grab.isSelected && grab.interactionManager != null)
                     {
                         var interactor = grab.firstInteractorSelecting;
@@ -169,7 +172,7 @@ namespace ArtSimulator
         public Vector3 GetScannerBedPosition()
         {
             // Superficie superior plana del escáner
-            return transform.position + transform.up * 0.252f;
+            return transform.position + transform.up * 0.253f;
         }
 
         /// <summary>
@@ -185,10 +188,12 @@ namespace ArtSimulator
             drawing.transform.position = GetScannerBedPosition();
             drawing.transform.rotation = transform.rotation * Quaternion.Euler(0, 90, 0);
 
-            // Asegurar que el dibujo quede estático mientras está retenido
+            // Asegurar que el dibujo quede estático y alineado mientras está retenido
             Rigidbody rb = drawing.GetComponent<Rigidbody>();
             if (rb != null)
             {
+                rb.linearVelocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
                 rb.isKinematic = true;
                 rb.useGravity = false;
             }
@@ -202,6 +207,7 @@ namespace ArtSimulator
             // Escanear inmediatamente y subir a la tableta
             ScanDrawing(drawing);
 
+            if (XRPlayerRigManager.Instance != null) { XRPlayerRigManager.Instance.ConfigureDrawingForVR(drawing.gameObject); }
             Debug.Log($"<color=cyan>[Impresora]</color> Dibujo <b>'{drawing.GetArtworkData().title}'</b> colocado automáticamente en el escáner.");
             return true;
         }
@@ -227,6 +233,7 @@ namespace ArtSimulator
                 rb.isKinematic = true;
             }
 
+            if (XRPlayerRigManager.Instance != null) { XRPlayerRigManager.Instance.ConfigureDrawingForVR(drawing.gameObject); }
             Debug.Log($"<color=cyan>[Impresora]</color> Dibujo <b>'{drawing.GetArtworkData().title}'</b> retirado de la impresora.");
             return drawing;
         }
@@ -392,6 +399,7 @@ namespace ArtSimulator
                 Material copyMat = new Material(r.sharedMaterial);
                 if (copyMat.HasProperty("_BaseMap")) copyMat.SetTexture("_BaseMap", copyTexture);
                 if (copyMat.HasProperty("_MainTex")) copyMat.SetTexture("_MainTex", copyTexture);
+                copyMat.SetFloat("_Cull", 0f); // Dos caras: visible aunque caiga volteada sobre el suelo
                 r.material = copyMat;
             }
 

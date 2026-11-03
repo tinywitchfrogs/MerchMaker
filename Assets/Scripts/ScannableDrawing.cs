@@ -127,7 +127,7 @@ namespace ArtSimulator
             // Alinear plano del aura detrás del dibujo
             auraObj.transform.localPosition = new Vector3(0, -0.05f, 0);
             auraObj.transform.localRotation = Quaternion.Euler(90, 0, 0);
-            auraObj.transform.localScale = new Vector3(12.5f, 12.5f, 1.0f);
+            auraObj.transform.localScale = new Vector3(13.5f, 13.5f, 1.0f);
 
             Renderer r = auraObj.GetComponent<Renderer>();
             if (r != null)
@@ -148,8 +148,8 @@ namespace ArtSimulator
             Light auraLight = auraObj.GetComponent<Light>();
             if (auraLight == null) auraLight = auraObj.AddComponent<Light>();
             auraLight.type = LightType.Point;
-            auraLight.range = 0.65f;
-            auraLight.intensity = 1.2f;
+            auraLight.range = 0.85f;
+            auraLight.intensity = 1.6f;
             auraLight.color = isOriginal ? new Color(0.15f, 0.65f, 1f) : new Color(1f, 0.85f, 0.15f);
 
             // Respetar estado global de visibilidad (oculto en modo cámara)

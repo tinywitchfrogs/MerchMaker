@@ -715,15 +715,15 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: -8679921383154817045, guid: 3a43e204236c84948b2a3a80eb35f85d, type: 3}
       propertyPath: m_LocalScale.x
-      value: 0.14655359
+      value: 0.040
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 3a43e204236c84948b2a3a80eb35f85d, type: 3}
       propertyPath: m_LocalScale.y
-      value: 0.14655359
+      value: 0.040
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 3a43e204236c84948b2a3a80eb35f85d, type: 3}
       propertyPath: m_LocalScale.z
-      value: 0.14655359
+      value: 0.040
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 3a43e204236c84948b2a3a80eb35f85d, type: 3}
       propertyPath: m_LocalPosition.x
@@ -2328,7 +2328,7 @@ AudioListener:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 330585543}
-  m_Enabled: 1
+  m_Enabled: 0
 --- !u!20 &330585545
 Camera:
   m_ObjectHideFlags: 0
@@ -2561,7 +2561,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: '[3] Vender y Pedidos'
+  m_Text: 'Vender y Pedidos'
 --- !u!222 &340231069
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -7610,7 +7610,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: '[1] Ver e Imprimir Fotos'
+  m_Text: 'Ver e Imprimir Fotos'
 --- !u!222 &908890691
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -10523,27 +10523,27 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: -8679921383154817045, guid: 3a43e204236c84948b2a3a80eb35f85d, type: 3}
       propertyPath: m_LocalScale.x
-      value: 0.14655359
+      value: 0.040
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 3a43e204236c84948b2a3a80eb35f85d, type: 3}
       propertyPath: m_LocalScale.y
-      value: 0.14655359
+      value: 0.040
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 3a43e204236c84948b2a3a80eb35f85d, type: 3}
       propertyPath: m_LocalScale.z
-      value: 0.14655359
+      value: 0.040
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 3a43e204236c84948b2a3a80eb35f85d, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 10
+      value: 9.80
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 3a43e204236c84948b2a3a80eb35f85d, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 0
+      value: -0.28
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 3a43e204236c84948b2a3a80eb35f85d, type: 3}
       propertyPath: m_LocalPosition.z
-      value: -4.96
+      value: -7.15
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 3a43e204236c84948b2a3a80eb35f85d, type: 3}
       propertyPath: m_LocalRotation.w
@@ -13401,7 +13401,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: '[2] Tomar Fotos'
+  m_Text: 'Tomar Fotos'
 --- !u!222 &1705894073
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -15660,7 +15660,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 1717954561962503726, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 5.2
+      value: 8.55
       objectReference: {fileID: 0}
     - target: {fileID: 1717954561962503726, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
       propertyPath: m_LocalPosition.y
@@ -15668,7 +15668,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 1717954561962503726, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
       propertyPath: m_LocalPosition.z
-      value: -8
+      value: -8.15
       objectReference: {fileID: 0}
     - target: {fileID: 1717954561962503726, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
       propertyPath: m_LocalRotation.w

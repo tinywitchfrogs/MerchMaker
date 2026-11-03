@@ -21,6 +21,8 @@ public class SendProduct : MonoBehaviour
     [Tooltip("Precio por unidad pagado si se entrega una copia sin pedido activo")]
     [SerializeField] private int basePriceFallback = 1000;
 
+    private readonly HashSet<GameObject> processedObjects = new HashSet<GameObject>();
+
     private void Awake()
     {
         if (instance == null) instance = this;
@@ -40,20 +42,47 @@ public class SendProduct : MonoBehaviour
     {
         if (other == null) return;
 
-        // Evitar procesar un objeto que aún está sostenido por el jugador (Desktop o VR)
-        if (FirstPersonPlayerController.Instance != null && 
-            FirstPersonPlayerController.Instance.IsHoldingObject(other.transform))
+        GameObject targetObj = other.gameObject;
+        ScannableDrawing drawing = other.GetComponent<ScannableDrawing>() ?? other.GetComponentInParent<ScannableDrawing>() ?? other.GetComponentInChildren<ScannableDrawing>();
+        if (drawing != null) targetObj = drawing.gameObject;
+
+        if (processedObjects.Contains(targetObj))
         {
             return;
         }
 
-        var grab = other.GetComponentInParent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRGrabInteractable>();
+        // Evitar procesar un objeto que aún está sostenido por el jugador (Desktop o VR)
+        if (FirstPersonPlayerController.Instance != null && 
+            FirstPersonPlayerController.Instance.IsHoldingObject(targetObj.transform))
+        {
+            return;
+        }
+
+        var grab = targetObj.GetComponent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRGrabInteractable>();
         if (grab != null && grab.isSelected)
         {
             return;
         }
 
-        ProcessDeliveredObject(other.gameObject);
+        // Si es la ilustración ORIGINAL, no la consumimos para evitar que el jugador pierda su arte
+        if (drawing != null && drawing.IsOriginal)
+        {
+            Debug.LogWarning("<color=yellow>[Caja de Envíos]</color> Has colocado el dibujo ORIGINAL. ¡Solo debes enviar las copias impresas!");
+            return;
+        }
+
+        // Marcar todos los objetos y colliders asociados para que jamás se cuente 2 veces la misma copia
+        processedObjects.Add(targetObj);
+        var colliders = targetObj.GetComponentsInChildren<Collider>(true);
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            processedObjects.Add(colliders[i].gameObject);
+            colliders[i].enabled = false;
+        }
+
+        // Desactivar inmediatamente para frenar cualquier evento de física remanente antes del Destroy
+        targetObj.SetActive(false);
+        ProcessDeliveredObject(targetObj);
     }
 
     /// <summary>
