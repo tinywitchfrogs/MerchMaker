@@ -90,6 +90,7 @@ namespace ArtSimulator
 
         public void OpenTablet()
         {
+            if (isTabletOpen) return;
             isTabletOpen = true;
             OnTabletOpenStateChanged?.Invoke(true);
             SetPhysicalTabletVisuals(true);
@@ -117,6 +118,7 @@ namespace ArtSimulator
 
         public void CloseTablet()
         {
+            if (!isTabletOpen) return;
             isTabletOpen = false;
             OnTabletOpenStateChanged?.Invoke(false);
             SetPhysicalTabletVisuals(true);

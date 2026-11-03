@@ -695,68 +695,65 @@ namespace ArtSimulator
             }
             if (canvasObj == null) return;
 
-            Canvas canvas = canvasObj.GetComponent<Canvas>();
-            if (canvas != null)
+            // Evitar re-montaje redundante si el lienzo ya está anclado a la pantalla de la tableta
+            if (canvasObj.transform.parent != pantalla)
             {
-                canvas.renderMode = RenderMode.WorldSpace;
-                if (spawnedXROrigin != null)
+                Canvas canvas = canvasObj.GetComponent<Canvas>();
+                if (canvas != null)
                 {
-                    Camera vrCam = spawnedXROrigin.GetComponentInChildren<Camera>();
-                    if (vrCam != null) canvas.worldCamera = vrCam;
+                    canvas.renderMode = RenderMode.WorldSpace;
+                    if (spawnedXROrigin != null)
+                    {
+                        Camera vrCam = spawnedXROrigin.GetComponentInChildren<Camera>();
+                        if (vrCam != null) canvas.worldCamera = vrCam;
+                    }
+                    else
+                    {
+                        canvas.worldCamera = Camera.main;
+                    }
                 }
-                else
+
+                // Anclar directamente al frente de la pantalla física 3D orientada al derecho
+                canvasObj.transform.SetParent(pantalla, false);
+                canvasObj.transform.localPosition = new Vector3(0, 0, 0.12f);
+                canvasObj.transform.localRotation = Quaternion.Euler(0f, 0f, 180f);
+
+                RectTransform rt = canvasObj.GetComponent<RectTransform>();
+                if (rt != null)
                 {
-                    canvas.worldCamera = Camera.main;
+                    rt.sizeDelta = new Vector2(1600, 1000);
+                    rt.localScale = new Vector3(-9.32f / 1600f, 5.53f / 1000f, 1f);
                 }
-            }
 
-            // Anclar directamente al frente de la pantalla física 3D orientada al derecho
-            canvasObj.transform.SetParent(pantalla, false);
-            canvasObj.transform.localPosition = new Vector3(0, 0, 0.12f);
-            canvasObj.transform.localRotation = Quaternion.Euler(0f, 0f, 180f);
+                // En VR vemos el mundo real detrás de la tableta: ocultar Backdrop negro de PC
+                Transform backdrop = canvasObj.transform.Find("Backdrop");
+                if (backdrop != null) backdrop.gameObject.SetActive(false);
 
-            RectTransform rt = canvasObj.GetComponent<RectTransform>();
-            if (rt != null)
-            {
-                rt.sizeDelta = new Vector2(1600, 1000);
-                rt.localScale = new Vector3(-9.32f / 1600f, 5.53f / 1000f, 1f);
-            }
+                // Ajustar el marco interactivo para que coincida exactamente con la pantalla
+                RectTransform frame = canvasObj.transform.Find("TabletDeviceFrame")?.GetComponent<RectTransform>();
+                if (frame != null)
+                {
+                    frame.anchorMin = Vector2.zero;
+                    frame.anchorMax = Vector2.one;
+                    frame.offsetMin = Vector2.zero;
+                    frame.offsetMax = Vector2.zero;
+                }
 
-            // En VR vemos el mundo real detrás de la tableta: ocultar Backdrop negro de PC
-            Transform backdrop = canvasObj.transform.Find("Backdrop");
-            if (backdrop != null) backdrop.gameObject.SetActive(false);
+                // Asegurar raycaster de realidad virtual sin descarte de gráficos invertidos
+                var raycaster = canvasObj.GetComponent<TrackedDeviceGraphicRaycaster>();
+                if (raycaster == null) raycaster = canvasObj.AddComponent<TrackedDeviceGraphicRaycaster>();
+                if (raycaster != null) raycaster.ignoreReversedGraphics = false;
 
-            // Ajustar el marco interactivo para que coincida exactamente con la pantalla
-            RectTransform frame = canvasObj.transform.Find("TabletDeviceFrame")?.GetComponent<RectTransform>();
-            if (frame != null)
-            {
-                frame.anchorMin = Vector2.zero;
-                frame.anchorMax = Vector2.one;
-                frame.offsetMin = Vector2.zero;
-                frame.offsetMax = Vector2.zero;
-            }
-
-            // Asegurar raycaster de realidad virtual sin descarte de gráficos invertidos
-            var raycaster = canvasObj.GetComponent<TrackedDeviceGraphicRaycaster>();
-            if (raycaster == null) raycaster = canvasObj.AddComponent<TrackedDeviceGraphicRaycaster>();
-            if (raycaster != null) raycaster.ignoreReversedGraphics = false;
-
-            // Asegurar GraphicRaycaster estándar para clics con ratón en Editor
-            var gr = canvasObj.GetComponent<UnityEngine.UI.GraphicRaycaster>();
-            if (gr != null)
-            {
-                gr.ignoreReversedGraphics = false;
-                gr.blockingObjects = UnityEngine.UI.GraphicRaycaster.BlockingObjects.None;
+                // Asegurar GraphicRaycaster estándar para clics con ratón en Editor
+                var gr = canvasObj.GetComponent<UnityEngine.UI.GraphicRaycaster>();
+                if (gr != null)
+                {
+                    gr.ignoreReversedGraphics = false;
+                    gr.blockingObjects = UnityEngine.UI.GraphicRaycaster.BlockingObjects.None;
+                }
             }
 
             canvasObj.SetActive(true);
-
-            // En Realidad Virtual la tableta permanece siempre encendida mostrando la pantalla de inicio
-            if (isVRActive && TabletManager.Instance != null)
-            {
-                TabletManager.Instance.OpenTablet();
-                TabletManager.Instance.ShowHome();
-            }
         }
 
         private void OnDispenserSelected(SelectEnterEventArgs args)
@@ -821,13 +818,6 @@ namespace ArtSimulator
                 }
             }
             if (canvasObj == null) return;
-
-            // En Realidad Virtual, la pantalla SIEMPRE permanece fijada a la tableta física en la mano
-            GameObject tabletaObj = GameObject.Find("Tableta");
-            if (tabletaObj != null)
-            {
-                MountTabletCanvasOnScreen(tabletaObj);
-            }
 
             // En Realidad Virtual, la pantalla física 3D nunca se apaga (siempre encendida en la oficina)
             canvasObj.SetActive(isVRActive ? true : isOpen);
