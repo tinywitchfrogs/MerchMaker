@@ -89,12 +89,12 @@ namespace ArtSimulator
             {
                 characterController = gameObject.AddComponent<CharacterController>();
             }
-            characterController.height = 1.75f;
-            characterController.radius = 0.35f;
-            characterController.center = new Vector3(0f, -0.85f, 0f);
-            characterController.skinWidth = 0.05f;
+            characterController.height = 1.85f;
+            characterController.radius = 0.30f;
+            characterController.center = new Vector3(0f, -0.925f, 0f);
+            characterController.skinWidth = 0.04f;
             characterController.minMoveDistance = 0f;
-            characterController.stepOffset = 0.3f;
+            characterController.stepOffset = 0.35f;
             characterController.slopeLimit = 45f;
 
             // Eliminar CapsuleCollider trigger obsoleto si existe

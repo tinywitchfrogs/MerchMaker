@@ -8,12 +8,12 @@ ModelImporter:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Paredes
-    second: {fileID: -8995868743792852838, guid: 7dab2e6b618dfe64da935bf6230dae53, type: 3}
+    second: {fileID: 2100000, guid: da730544956478e4aa5083243969f7d0, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Piso
-    second: {fileID: 2104212959445488773, guid: 7dab2e6b618dfe64da935bf6230dae53, type: 3}
+    second: {fileID: 2100000, guid: c025373ab4c356e4984b38b275aeb037, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
@@ -23,7 +23,7 @@ ModelImporter:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: puerta
-    second: {fileID: 3887745514061114486, guid: 7dab2e6b618dfe64da935bf6230dae53, type: 3}
+    second: {fileID: 2100000, guid: b574cdc74723f5440ba430bd18b5cf78, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0

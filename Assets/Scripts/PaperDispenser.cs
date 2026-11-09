@@ -126,11 +126,18 @@ namespace ArtSimulator
             bc.center = Vector3.zero;
             bc.enabled = true;
 
-            // Configurar Rigidbody
+            // Configurar Rigidbody cinemático al nacer para reposar con total suavidad sin atascarse
             Rigidbody rb = newPaper.GetComponent<Rigidbody>();
             if (rb == null) rb = newPaper.AddComponent<Rigidbody>();
-            rb.isKinematic = false;
+            rb.isKinematic = true;
             rb.useGravity = true;
+
+            // Ignorar colisiones entre la hoja recién dispensada y el dispensador para que jamás quede atrapada
+            Collider dispCol = GetComponent<Collider>();
+            if (dispCol != null && bc != null)
+            {
+                Physics.IgnoreCollision(dispCol, bc, true);
+            }
 
             // Reproducir sonido de hoja de papel
             PlayPaperSound();

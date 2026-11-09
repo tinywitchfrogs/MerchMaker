@@ -115,8 +115,10 @@ namespace ArtSimulator
 
         private void Start()
         {
+            SetupTableColliders();
             SetupVRInteractables();
-            SpawnVRPenOnDesk();
+            SetupBasurero();
+            SetupColoredPens();
 
             if (TabletManager.Instance != null)
             {
@@ -232,7 +234,10 @@ namespace ArtSimulator
             if (spawnedXROrigin != null)
             {
                 Camera vrCam = spawnedXROrigin.GetComponentInChildren<Camera>();
-                Vector3 deskCenter = new Vector3(8.55f, -0.28f, -7.15f);
+                // Orientar hacia la mesa principal de trabajo y dibujo (Mesa1.0 con las hojas y lápices)
+                GameObject mesaObj = GameObject.Find("Mesa1.0");
+                Vector3 deskCenter = mesaObj != null ? mesaObj.transform.position : new Vector3(5.62f, -0.07f, -0.15f);
+                deskCenter.y = -0.07f;
 
                 Vector3 camPos = vrCam != null ? vrCam.transform.position : spawnedXROrigin.transform.position;
                 Vector3 toDesk = deskCenter - camPos;
@@ -245,7 +250,7 @@ namespace ArtSimulator
                     Quaternion headYawRot = Quaternion.Euler(0f, headYaw, 0f);
 
                     spawnedXROrigin.transform.rotation = desiredHeadRot * Quaternion.Inverse(headYawRot);
-                    Debug.Log($"<color=green>[XR Manager]</color> Vista inicial alineada hacia el escritorio. HeadYaw={headYaw:F1}°, RigYaw={spawnedXROrigin.transform.eulerAngles.y:F1}°");
+                    Debug.Log($"<color=green>[XR Manager]</color> Vista inicial alineada de frente al escritorio de dibujo. HeadYaw={headYaw:F1}°, RigYaw={spawnedXROrigin.transform.eulerAngles.y:F1}°");
                 }
             }
         }
@@ -285,22 +290,8 @@ namespace ArtSimulator
                 if (xrOriginPrefab != null)
                 {
                     var playerCtrl = FirstPersonPlayerController.Instance != null ? FirstPersonPlayerController.Instance : FindAnyObjectByType<FirstPersonPlayerController>();
-                    Vector3 spawnPos = new Vector3(8.55f, -1.17f, -8.15f);
-                    if (playerCtrl != null)
-                    {
-                        spawnPos = playerCtrl.transform.position;
-                    }
-
-                    // Alinear la base del XR Origin exactamente con la superficie física del piso
-                    if (Physics.Raycast(new Vector3(spawnPos.x, spawnPos.y + 1.5f, spawnPos.z), Vector3.down, out RaycastHit floorHit, 15f))
-                    {
-                        spawnPos = floorHit.point;
-                    }
-                    else
-                    {
-                        spawnPos.y = -1.15f;
-                    }
-
+                    // Ubicar el XR Origin de pie frente a la mesa principal de trabajo y dibujo (Mesa1.0)
+                    Vector3 spawnPos = new Vector3(5.62f, -1.17f, -1.05f);
                     Quaternion spawnRot = Quaternion.identity;
                     spawnedXROrigin = Instantiate(xrOriginPrefab, spawnPos, spawnRot);
                     spawnedXROrigin.name = "XR Origin (VR Rig)";
@@ -315,6 +306,19 @@ namespace ArtSimulator
                         cc.skinWidth = 0.04f;
                         cc.stepOffset = 0.35f;
                         cc.slopeLimit = 45f;
+                    }
+
+                    // Configurar altura promedio de persona adulta y modo de seguimiento de suelo en VR
+                    var originComp = spawnedXROrigin.GetComponent<Unity.XR.CoreUtils.XROrigin>();
+                    if (originComp != null)
+                    {
+                        originComp.RequestedTrackingOriginMode = Unity.XR.CoreUtils.XROrigin.TrackingOriginMode.Floor;
+                        originComp.CameraYOffset = 1.75f;
+                    }
+                    Transform camOffset = spawnedXROrigin.transform.Find("Camera Offset");
+                    if (camOffset != null)
+                    {
+                        camOffset.localPosition = new Vector3(0f, 1.75f, 0f);
                     }
 
                     // Desactivar JumpProvider en VR (según requerimiento de diseño: no saltar en el juego)
@@ -333,8 +337,8 @@ namespace ArtSimulator
             if (spawnedXROrigin != null)
             {
                 spawnedXROrigin.SetActive(true);
-
-                // Alinear automáticamente la vista del jugador hacia el escritorio al iniciar en VR
+                // Asegurar que el XR Origin esté ubicado justo frente a la mesa principal de trabajo
+                spawnedXROrigin.transform.position = new Vector3(5.62f, -1.17f, -1.05f);
                 spawnedXROrigin.transform.rotation = Quaternion.identity;
                 StartCoroutine(AlignPlayerToDeskRoutine());
 
@@ -545,6 +549,9 @@ namespace ArtSimulator
             var currentDesktopPlayer = FirstPersonPlayerController.Instance != null ? FirstPersonPlayerController.Instance : FindAnyObjectByType<FirstPersonPlayerController>();
             if (currentDesktopPlayer != null)
             {
+                // Ubicar al jugador de escritorio de frente a la mesa de dibujo
+                currentDesktopPlayer.transform.position = new Vector3(5.62f, 0.82f, -1.05f);
+                currentDesktopPlayer.transform.rotation = Quaternion.Euler(0f, 0f, 0f);
                 Camera desktopCam = currentDesktopPlayer.GetComponent<Camera>();
                 if (desktopCam != null)
                 {
@@ -948,70 +955,90 @@ namespace ArtSimulator
             canvasObj.SetActive(isVRActive ? true : isOpen);
         }
 
-        private void SpawnVRPenOnDesk()
+        private void SetupColoredPens()
         {
-            if (GameObject.Find("VRPen_Stylus") != null) return;
+            // Eliminar el lápiz de prueba anterior si existía
+            var oldPen = GameObject.Find("VRPen_Stylus");
+            if (oldPen != null) Destroy(oldPen);
 
-            // Crear un lápiz 3D ergonómico en la mesa de dibujo
-            GameObject penObj = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            penObj.name = "VRPen_Stylus";
-            // Apoyado sobre la mesa al lado de las hojas
-            penObj.transform.position = new Vector3(8.55f, -0.28f, -7.05f);
-            penObj.transform.rotation = Quaternion.Euler(0, 45f, 90f);
-            penObj.transform.localScale = new Vector3(0.02f, 0.10f, 0.02f);
-
-            var rb = penObj.GetComponent<Rigidbody>();
-            if (rb == null) rb = penObj.AddComponent<Rigidbody>();
-            rb.mass = 0.05f;
-            rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
-
-            // Punto de agarre ergonomico: la punta del cilindro (+Y) se alinea exactamente
-            // con el puntero/frente del mando Quest (+Z) para usar la punta del mando como lapiz
-            Transform penAttach = penObj.transform.Find("VRPenAttachPoint");
-            if (penAttach == null)
+            // Asegurar que el ColoredPenManager esté presente en la escena
+            if (ColoredPenManager.Instance == null)
             {
-                GameObject ap = new GameObject("VRPenAttachPoint");
-                ap.transform.SetParent(penObj.transform, false);
-                penAttach = ap.transform;
+                var existing = FindAnyObjectByType<ColoredPenManager>();
+                if (existing == null)
+                {
+                    gameObject.AddComponent<ColoredPenManager>();
+                }
             }
-            penAttach.localPosition = new Vector3(0f, 0.40f, 0f);
-            penAttach.localRotation = Quaternion.Euler(-90f, 0f, 0f);
+        }
 
-            var grab = penObj.AddComponent<XRGrabInteractable>();
-            grab.movementType = XRBaseInteractable.MovementType.VelocityTracking;
-            grab.useDynamicAttach = false;
-            grab.matchAttachPosition = false;
-            grab.matchAttachRotation = false;
-            grab.snapToColliderVolume = false;
-            grab.attachEaseInTime = 0.12f;
-            grab.attachTransform = penAttach;
-
-            // Punta del lápiz interactiva
-            GameObject tipObj = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            tipObj.name = "PenTip";
-            tipObj.transform.SetParent(penObj.transform, false);
-            tipObj.transform.localPosition = new Vector3(0, 1.05f, 0);
-            tipObj.transform.localScale = new Vector3(1.2f, 0.3f, 1.2f);
-
-            var tipCol = tipObj.GetComponent<SphereCollider>();
-            if (tipCol != null) tipCol.isTrigger = true;
-
-            var penTip = tipObj.AddComponent<VRPenTip>();
-            penTip.SetColor(Color.black);
-            penTip.SetBrushSize(10);
-
-            // Material del cuerpo del lápiz
-            Renderer pr = penObj.GetComponent<Renderer>();
-            if (pr != null)
+        private void SetupTableColliders()
+        {
+            // 1. Mesa principal de trabajo y dibujo (Mesa1.0)
+            GameObject mesa = GameObject.Find("Mesa1.0");
+            if (mesa != null)
             {
-                Shader s = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
-                Material mat = new Material(s);
-                mat.color = new Color(0.15f, 0.18f, 0.25f);
-                if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", new Color(0.15f, 0.18f, 0.25f));
-                pr.material = mat;
+                var bc = mesa.GetComponent<BoxCollider>();
+                if (bc == null) bc = mesa.AddComponent<BoxCollider>();
+                bc.center = new Vector3(0f, 4.30f, 0f);
+                bc.size = new Vector3(4.85f, 0.28f, 8.35f);
             }
 
-            Debug.Log("<color=green>[XR Manager]</color> Lápiz físico 3D para dibujo en Realidad Virtual configurado en el escritorio.");
+            // 2. Mesa secundaria de impresora y envios (Mesa1.0 (1))
+            GameObject mesa2 = GameObject.Find("Mesa1.0 (1)");
+            if (mesa2 != null)
+            {
+                var bc2 = mesa2.GetComponent<BoxCollider>();
+                if (bc2 == null) bc2 = mesa2.AddComponent<BoxCollider>();
+                bc2.center = new Vector3(-0.01f, 4.30f, 1.97f);
+                bc2.size = new Vector3(4.85f, 0.28f, 8.35f);
+            }
+
+            // 3. Caja de lapices sobre la mesa
+            GameObject caja = GameObject.Find("caja_lapices");
+            if (caja != null)
+            {
+                Transform cube = caja.transform.Find("Cube");
+                if (cube != null)
+                {
+                    var bcCube = cube.GetComponent<BoxCollider>();
+                    if (bcCube == null) bcCube = cube.gameObject.AddComponent<BoxCollider>();
+                }
+            }
+
+            // 4. Ignorar colisión entre el jugador y la caja de envíos para que jamás quede atrapado
+            SendProduct sendBox = FindAnyObjectByType<SendProduct>();
+            if (sendBox != null)
+            {
+                Collider boxCol = sendBox.GetComponent<Collider>();
+                if (boxCol != null)
+                {
+                    var allCols = FindObjectsByType<Collider>(FindObjectsInactive.Include);
+                    for (int i = 0; i < allCols.Length; i++)
+                    {
+                        string cName = allCols[i].name;
+                        if (cName.Contains("Player") || cName.Contains("XR") || cName.Contains("Origin"))
+                        {
+                            Physics.IgnoreCollision(allCols[i], boxCol, true);
+                        }
+                    }
+                }
+            }
+        }
+
+        private void SetupBasurero()
+        {
+            // Configurar el Basurero con su controlador de descarte de artículos no deseados
+            GameObject basurero = GameObject.Find("Basurero");
+            if (basurero != null)
+            {
+                var trashCtrl = basurero.GetComponent<TrashCanController>();
+                if (trashCtrl == null)
+                {
+                    trashCtrl = basurero.AddComponent<TrashCanController>();
+                }
+                trashCtrl.SetupTrashTrigger();
+            }
         }
     }
 }

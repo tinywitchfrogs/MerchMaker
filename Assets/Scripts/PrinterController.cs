@@ -60,14 +60,38 @@ namespace ArtSimulator
 
         public Vector3 GetPaperSlotPosition()
         {
-            // Ranura interior frontal de donde sale la hoja impresa
-            return transform.position + transform.right * 0.17f + transform.up * (-0.038f) + transform.forward * (-0.031f);
+            // Ranura interior frontal de donde sale la hoja impresa hacia el jugador
+            var renderers = GetComponentsInChildren<Renderer>();
+            if (renderers != null && renderers.Length > 0)
+            {
+                Bounds b = renderers[0].bounds;
+                for (int i = 1; i < renderers.Length; i++)
+                {
+                    if (!renderers[i].name.Contains("Aura")) b.Encapsulate(renderers[i].bounds);
+                }
+                Vector3 slotPos = b.center - transform.forward * (b.extents.x - 0.02f);
+                slotPos.y = b.min.y + 0.06f;
+                return slotPos;
+            }
+            return transform.position - transform.forward * 0.20f + transform.up * 0.05f;
         }
 
         public Vector3 GetPaperTrayPosition()
         {
-            // Bandeja exterior frontal donde reposan las copias impresas
-            return transform.position + transform.right * 0.33f + transform.up * (-0.093f) + transform.forward * (-0.031f);
+            // Bandeja exterior frontal donde reposan las copias impresas frente al jugador
+            var renderers = GetComponentsInChildren<Renderer>();
+            if (renderers != null && renderers.Length > 0)
+            {
+                Bounds b = renderers[0].bounds;
+                for (int i = 1; i < renderers.Length; i++)
+                {
+                    if (!renderers[i].name.Contains("Aura")) b.Encapsulate(renderers[i].bounds);
+                }
+                Vector3 trayPos = b.center - transform.forward * (b.extents.x + 0.12f);
+                trayPos.y = b.min.y + 0.05f;
+                return trayPos;
+            }
+            return transform.position - transform.forward * 0.35f + transform.up * 0.05f;
         }
 
         private void SetupPrinterPositions()
@@ -171,8 +195,20 @@ namespace ArtSimulator
 
         public Vector3 GetScannerBedPosition()
         {
-            // Superficie superior plana del escáner
-            return transform.position + transform.up * 0.253f;
+            // Superficie superior plana del escáner ajustada dinámicamente al nuevo modelo
+            var renderers = GetComponentsInChildren<Renderer>();
+            if (renderers != null && renderers.Length > 0)
+            {
+                Bounds b = renderers[0].bounds;
+                for (int i = 1; i < renderers.Length; i++)
+                {
+                    if (!renderers[i].name.Contains("Aura")) b.Encapsulate(renderers[i].bounds);
+                }
+                Vector3 bedPos = b.center;
+                bedPos.y = b.max.y + 0.006f;
+                return bedPos;
+            }
+            return transform.position + transform.up * 0.38f;
         }
 
         /// <summary>
@@ -184,9 +220,9 @@ namespace ArtSimulator
 
             currentInsertedDrawing = drawing;
 
-            // Colocar el dibujo exactamente sobre el cristal superior del escáner
+            // Colocar el dibujo exactamente sobre el cristal superior del escáner (uniforme y plano)
             drawing.transform.position = GetScannerBedPosition();
-            drawing.transform.rotation = transform.rotation * Quaternion.Euler(0, 90, 0);
+            drawing.transform.rotation = Quaternion.Euler(0f, transform.eulerAngles.y, 0f);
 
             // Asegurar que el dibujo quede estático y alineado mientras está retenido
             Rigidbody rb = drawing.GetComponent<Rigidbody>();

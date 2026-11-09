@@ -32,6 +32,9 @@ namespace ArtSimulator
         private RenderTexture cameraRenderTexture;
         private AudioSource audioSource;
         private bool prevVRShotPressed = false;
+        private bool isCapturing = false;
+        private float lastPhotoTime = -10f;
+        private const float PHOTO_COOLDOWN = 0.8f;
 
         private void Awake()
         {
@@ -124,7 +127,8 @@ namespace ArtSimulator
         {
             if (cameraRenderTexture == null)
             {
-                cameraRenderTexture = new RenderTexture(1024, 768, 16, RenderTextureFormat.ARGB32);
+                // Resolución optimizada (640x480): instantánea sin congelar el juego (4x más rápida)
+                cameraRenderTexture = new RenderTexture(640, 480, 16, RenderTextureFormat.ARGB32);
                 cameraRenderTexture.name = "Tablet_Camera_RT";
             }
 
@@ -405,12 +409,17 @@ namespace ArtSimulator
 
         public void TakePhoto()
         {
+            // Debounce y prevención de disparos múltiples simultáneos
+            if (isCapturing || Time.time - lastPhotoTime < PHOTO_COOLDOWN) return;
             if (cameraRenderTexture == null || tabletCamera == null) return;
             StartCoroutine(CapturePhotoRoutine());
         }
 
         private IEnumerator CapturePhotoRoutine()
         {
+            isCapturing = true;
+            lastPhotoTime = Time.time;
+
             // Garantizar que las auras no se capturen en la fotografía
             ScannableDrawing.SetAllAurasVisible(false);
 
@@ -422,40 +431,51 @@ namespace ArtSimulator
 
             PlayShutterClick();
 
-            tabletCamera.Render();
+            yield return null; // Pausa mínima para permitir que la GPU termine el fotograma actual limpiamente
+
+            if (tabletCamera != null && cameraRenderTexture != null)
+            {
+                tabletCamera.Render();
+            }
+
             // Restaurar inmediatamente la visibilidad de las auras de color para el jugador
             ScannableDrawing.SetAllAurasVisible(true);
 
-            RenderTexture prevRT = RenderTexture.active;
-            RenderTexture.active = cameraRenderTexture;
-
-            Texture2D captured = new Texture2D(cameraRenderTexture.width, cameraRenderTexture.height, TextureFormat.RGBA32, false);
-            captured.ReadPixels(new Rect(0, 0, cameraRenderTexture.width, cameraRenderTexture.height), 0, 0);
-            captured.Apply();
-            captured.name = $"Foto_{System.DateTime.Now:HHmmss}";
-
-            RenderTexture.active = prevRT;
-
-            if (TabletManager.Instance != null)
+            if (cameraRenderTexture != null)
             {
-                TabletManager.Instance.AddCapturedPhoto(captured);
+                RenderTexture prevRT = RenderTexture.active;
+                RenderTexture.active = cameraRenderTexture;
+
+                Texture2D captured = new Texture2D(cameraRenderTexture.width, cameraRenderTexture.height, TextureFormat.RGBA32, false);
+                captured.ReadPixels(new Rect(0, 0, cameraRenderTexture.width, cameraRenderTexture.height), 0, 0);
+                captured.Apply();
+                captured.name = $"Foto_{System.DateTime.Now:HHmmss}";
+
+                RenderTexture.active = prevRT;
+
+                if (TabletManager.Instance != null)
+                {
+                    TabletManager.Instance.AddCapturedPhoto(captured);
+                }
             }
 
             // Desvanecer el flash blanco
             if (flashOverlay != null)
             {
                 float t = 0f;
-                while (t < 0.25f)
+                while (t < 0.20f)
                 {
                     t += Time.deltaTime;
-                    float alpha = Mathf.Lerp(0.9f, 0f, t / 0.25f);
+                    float alpha = Mathf.Lerp(0.9f, 0f, t / 0.20f);
                     flashOverlay.color = new Color(1, 1, 1, alpha);
                     yield return null;
                 }
                 flashOverlay.gameObject.SetActive(false);
             }
 
-            Debug.Log("<color=green>[Cámara]</color> ¡Foto capturada con éxito y guardada en la galería!");
+            isCapturing = false;
+            lastPhotoTime = Time.time;
+            Debug.Log("<color=green>[Cámara]</color> ¡Foto única capturada con fluidez y guardada en la galería!");
         }
 
         private void PlayShutterClick()

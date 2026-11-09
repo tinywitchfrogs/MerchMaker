@@ -84,7 +84,7 @@ namespace ArtSimulator
             tfbRt.offsetMin = Vector2.zero;
             tfbRt.offsetMax = Vector2.zero;
 
-            Text titleText = CreateText("TabletModelTitle", topFrameBar.transform, "Suny", 16, FontStyle.Bold, new Color(0.85f, 0.88f, 0.95f), TextAnchor.MiddleLeft);
+            Text titleText = CreateText("TabletModelTitle", topFrameBar.transform, "SUNY TAB - TALLER DE MERCHANDISING", 24, FontStyle.Bold, new Color(0.85f, 0.88f, 0.95f), TextAnchor.MiddleLeft);
             RectTransform ttRt = titleText.GetComponent<RectTransform>();
             ttRt.anchorMin = new Vector2(0.03f, 0);
             ttRt.anchorMax = new Vector2(0.5f, 1);
@@ -92,26 +92,9 @@ namespace ArtSimulator
             ttRt.offsetMax = Vector2.zero;
             titleText.raycastTarget = false;
 
-            // Botón Cerrar Tableta superior derecho
+            // El botón rojo de guardar tableta queda oculto por el formato interactivo 3D del taller
             GameObject closeBtnObj = CreateUIElement("CloseTabletButton", topFrameBar.transform);
-            RectTransform cbtRt = closeBtnObj.GetComponent<RectTransform>();
-            cbtRt.anchorMin = new Vector2(0.62f, 0.10f);
-            cbtRt.anchorMax = new Vector2(0.98f, 0.90f);
-            cbtRt.offsetMin = Vector2.zero;
-            cbtRt.offsetMax = Vector2.zero;
-
-            Image cbtImg = closeBtnObj.AddComponent<Image>();
-            cbtImg.color = new Color(0.86f, 0.18f, 0.18f);
-            cbtImg.raycastTarget = true;
-            Button cbtBtn = closeBtnObj.AddComponent<Button>();
-            cbtBtn.targetGraphic = cbtImg;
-
-            TabletButtonTrigger cbtTrig = closeBtnObj.AddComponent<TabletButtonTrigger>();
-            cbtTrig.SetAction("Cerrar Tableta", () => TabletManager.Instance?.CloseTablet());
-
-            Text cbtTxt = CreateText("Lbl", closeBtnObj.transform, "✕ GUARDAR TABLETA [ESC]", 14, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
-            SetFullStretch(cbtTxt.gameObject);
-            cbtTxt.raycastTarget = false;
+            closeBtnObj.SetActive(false);
 
             // 3. Área de pantalla activa (Display donde se ven las apps)
             GameObject screenArea = CreateUIElement("ScreenArea", deviceFrame.transform);
@@ -187,7 +170,7 @@ namespace ArtSimulator
             tbRt.offsetMin = Vector2.zero;
             tbRt.offsetMax = Vector2.zero;
 
-            Text clockText = CreateText("Clock", topBar.transform, "12:45 PM", 22, FontStyle.Bold, new Color(0.12f, 0.16f, 0.24f), TextAnchor.MiddleLeft);
+            Text clockText = CreateText("Clock", topBar.transform, "12:45 PM", 32, FontStyle.Bold, new Color(0.12f, 0.16f, 0.24f), TextAnchor.MiddleLeft);
             RectTransform ctRt = clockText.GetComponent<RectTransform>();
             ctRt.anchorMin = new Vector2(0.04f, 0);
             ctRt.anchorMax = new Vector2(0.3f, 1);
@@ -195,7 +178,7 @@ namespace ArtSimulator
             ctRt.offsetMax = Vector2.zero;
             clockText.raycastTarget = false;
 
-            Text statusInfo = CreateText("StatusInfo", topBar.transform, "📶 Wi-Fi Conectado   •   🔋 100%", 16, FontStyle.Bold, new Color(0.35f, 0.42f, 0.52f), TextAnchor.MiddleRight);
+            Text statusInfo = CreateText("StatusInfo", topBar.transform, "📶 Wi-Fi Conectado   •   🔋 100%", 26, FontStyle.Bold, new Color(0.35f, 0.42f, 0.52f), TextAnchor.MiddleRight);
             RectTransform siRt = statusInfo.GetComponent<RectTransform>();
             siRt.anchorMin = new Vector2(0.6f, 0);
             siRt.anchorMax = new Vector2(0.96f, 1);
@@ -211,7 +194,7 @@ namespace ArtSimulator
             hhRt.offsetMin = Vector2.zero;
             hhRt.offsetMax = Vector2.zero;
 
-            Text homeTitle = CreateText("Title", headerObj.transform, "APLICACIONES DISPONIBLES", 30, FontStyle.Bold, new Color(0.06f, 0.09f, 0.16f), TextAnchor.MiddleCenter);
+            Text homeTitle = CreateText("Title", headerObj.transform, "APLICACIONES DISPONIBLES", 42, FontStyle.Bold, new Color(0.06f, 0.09f, 0.16f), TextAnchor.MiddleCenter);
             RectTransform htRt = homeTitle.GetComponent<RectTransform>();
             htRt.anchorMin = new Vector2(0, 0.45f);
             htRt.anchorMax = new Vector2(1, 1f);
@@ -219,7 +202,7 @@ namespace ArtSimulator
             htRt.offsetMax = Vector2.zero;
             homeTitle.raycastTarget = false;
 
-            Text homeSub = CreateText("Subtitle", headerObj.transform, "Haz clic en una aplicación para abrirla (o usa las teclas rápidas 1, 2, 3)", 16, FontStyle.Normal, new Color(0.35f, 0.42f, 0.52f), TextAnchor.MiddleCenter);
+            Text homeSub = CreateText("Subtitle", headerObj.transform, "Toca o haz clic en una app para abrirla", 24, FontStyle.Normal, new Color(0.35f, 0.42f, 0.52f), TextAnchor.MiddleCenter);
             RectTransform hsRt = homeSub.GetComponent<RectTransform>();
             hsRt.anchorMin = new Vector2(0, 0);
             hsRt.anchorMax = new Vector2(1, 0.45f);
@@ -316,7 +299,7 @@ namespace ArtSimulator
             lblContRt.offsetMin = Vector2.zero;
             lblContRt.offsetMax = Vector2.zero;
 
-            Text labelText = CreateText("Label", labelObj.transform, title, 20, FontStyle.Bold, new Color(0.08f, 0.12f, 0.20f), TextAnchor.MiddleCenter);
+            Text labelText = CreateText("Label", labelObj.transform, title, 30, FontStyle.Bold, new Color(0.08f, 0.12f, 0.20f), TextAnchor.MiddleCenter);
             RectTransform ltRt = labelText.GetComponent<RectTransform>();
             ltRt.anchorMin = new Vector2(0, 0.45f);
             ltRt.anchorMax = new Vector2(1, 1f);
@@ -335,7 +318,7 @@ namespace ArtSimulator
             pillImg.color = new Color(0.93f, 0.95f, 0.98f);
             pillImg.raycastTarget = false;
 
-            Text shortcutTxt = CreateText("Shortcut", pillObj.transform, shortcutHelp, 13, FontStyle.Bold, new Color(0.28f, 0.35f, 0.45f), TextAnchor.MiddleCenter);
+            Text shortcutTxt = CreateText("Shortcut", pillObj.transform, shortcutHelp, 20, FontStyle.Bold, new Color(0.28f, 0.35f, 0.45f), TextAnchor.MiddleCenter);
             SetFullStretch(shortcutTxt.gameObject);
             shortcutTxt.raycastTarget = false;
 
@@ -384,7 +367,7 @@ namespace ArtSimulator
             hRt.anchorMax = new Vector2(0.5f, 0.88f);
             hRt.pivot = new Vector2(0.5f, 0.5f);
             hRt.anchoredPosition = Vector2.zero;
-            hRt.sizeDelta = new Vector2(80, 58);
+            hRt.sizeDelta = new Vector2(96, 68);
 
             Image hImg = homeObj.AddComponent<Image>();
             hImg.color = new Color(0.13f, 0.44f, 0.88f); // Azul zafiro destacado
@@ -400,7 +383,7 @@ namespace ArtSimulator
             TabletButtonTrigger htTrig = homeObj.AddComponent<TabletButtonTrigger>();
             htTrig.SetAction("Volver al Inicio", () => TabletManager.Instance?.ShowHome());
 
-            Text hText = CreateText("HouseSymbol", homeObj.transform, "← 🏠\nVOLVER", 12, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+            Text hText = CreateText("HouseSymbol", homeObj.transform, "← 🏠\nMENÚ", 20, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
             SetFullStretch(hText.gameObject);
             hText.raycastTarget = false;
 
@@ -409,7 +392,7 @@ namespace ArtSimulator
             RectTransform shutRt = shutterObj.GetComponent<RectTransform>();
             shutRt.anchorMin = new Vector2(0.5f, 0.48f);
             shutRt.anchorMax = new Vector2(0.5f, 0.48f);
-            shutRt.sizeDelta = new Vector2(74, 74);
+            shutRt.sizeDelta = new Vector2(92, 92);
 
             Image shutImg = shutterObj.AddComponent<Image>();
             shutImg.color = Color.black;
@@ -425,7 +408,7 @@ namespace ArtSimulator
             ringImg.color = new Color(0.4f, 0.4f, 0.4f, 0.5f);
             ringImg.raycastTarget = false;
 
-            Text shutLbl = CreateText("Lbl", shutterObj.transform, "FOTO\n[ESPACIO]", 11, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+            Text shutLbl = CreateText("Lbl", shutterObj.transform, "📸 FOTO", 20, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
             SetFullStretch(shutLbl.gameObject);
             shutLbl.raycastTarget = false;
 
@@ -434,22 +417,22 @@ namespace ArtSimulator
             RectTransform zgRt = zoomGroup.GetComponent<RectTransform>();
             zgRt.anchorMin = new Vector2(0.5f, 0.18f);
             zgRt.anchorMax = new Vector2(0.5f, 0.18f);
-            zgRt.sizeDelta = new Vector2(74, 94);
+            zgRt.sizeDelta = new Vector2(92, 115);
 
             // Botón Zoom In [+]
             GameObject zInObj = CreateUIElement("ZoomInBtn", zoomGroup.transform);
             RectTransform zinRt = zInObj.GetComponent<RectTransform>();
             zinRt.anchorMin = new Vector2(0.5f, 0.5f);
             zinRt.anchorMax = new Vector2(0.5f, 0.5f);
-            zinRt.anchoredPosition = new Vector2(0, 32);
-            zinRt.sizeDelta = new Vector2(56, 26);
+            zinRt.anchoredPosition = new Vector2(0, 38);
+            zinRt.sizeDelta = new Vector2(78, 34);
 
             Image zinImg = zInObj.AddComponent<Image>();
             zinImg.color = new Color(0.18f, 0.22f, 0.30f, 0.95f);
             Button zInBtn = zInObj.AddComponent<Button>();
             zInBtn.targetGraphic = zinImg;
 
-            Text zinLbl = CreateText("Lbl", zInObj.transform, "🔍 +", 11, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+            Text zinLbl = CreateText("Lbl", zInObj.transform, "🔍 +", 20, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
             SetFullStretch(zinLbl.gameObject);
             zinLbl.raycastTarget = false;
 
@@ -459,9 +442,9 @@ namespace ArtSimulator
             ztxtRt.anchorMin = new Vector2(0.5f, 0.5f);
             ztxtRt.anchorMax = new Vector2(0.5f, 0.5f);
             ztxtRt.anchoredPosition = new Vector2(0, 4);
-            ztxtRt.sizeDelta = new Vector2(64, 20);
+            ztxtRt.sizeDelta = new Vector2(78, 26);
 
-            Text zoomTxt = CreateText("ZoomValue", zTxtObj.transform, "1.0x", 12, FontStyle.Bold, Color.cyan, TextAnchor.MiddleCenter);
+            Text zoomTxt = CreateText("ZoomValue", zTxtObj.transform, "1.0x", 22, FontStyle.Bold, Color.cyan, TextAnchor.MiddleCenter);
             SetFullStretch(zoomTxt.gameObject);
             zoomTxt.raycastTarget = false;
 
@@ -470,15 +453,15 @@ namespace ArtSimulator
             RectTransform zoutRt = zOutObj.GetComponent<RectTransform>();
             zoutRt.anchorMin = new Vector2(0.5f, 0.5f);
             zoutRt.anchorMax = new Vector2(0.5f, 0.5f);
-            zoutRt.anchoredPosition = new Vector2(0, -24);
-            zoutRt.sizeDelta = new Vector2(56, 26);
+            zoutRt.anchoredPosition = new Vector2(0, -32);
+            zoutRt.sizeDelta = new Vector2(78, 34);
 
             Image zoutImg = zOutObj.AddComponent<Image>();
             zoutImg.color = new Color(0.18f, 0.22f, 0.30f, 0.95f);
             Button zOutBtn = zOutObj.AddComponent<Button>();
             zOutBtn.targetGraphic = zoutImg;
 
-            Text zoutLbl = CreateText("Lbl", zOutObj.transform, "🔍 -", 11, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+            Text zoutLbl = CreateText("Lbl", zOutObj.transform, "🔍 -", 20, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
             SetFullStretch(zoutLbl.gameObject);
             zoutLbl.raycastTarget = false;
 
@@ -535,7 +518,7 @@ namespace ArtSimulator
             imgRt.localScale = new Vector3(-1f, 1f, 1f);
 
             // Título de la ilustración
-            Text titleTxt = CreateText("ArtworkTitle", previewPanel.transform, "Selecciona una ilustración", 20, FontStyle.Bold, new Color(0.08f, 0.12f, 0.20f), TextAnchor.MiddleCenter);
+            Text titleTxt = CreateText("ArtworkTitle", previewPanel.transform, "Selecciona una ilustración", 30, FontStyle.Bold, new Color(0.08f, 0.12f, 0.20f), TextAnchor.MiddleCenter);
             RectTransform titRt = titleTxt.GetComponent<RectTransform>();
             titRt.anchorMin = new Vector2(0.05f, 0.27f);
             titRt.anchorMax = new Vector2(0.95f, 0.37f);
@@ -560,7 +543,7 @@ namespace ArtSimulator
 
             TabletButtonTrigger ptTrig = printObj.AddComponent<TabletButtonTrigger>();
 
-            Text printLbl = CreateText("PrintLabel", printObj.transform, "🖨️ IMPRIMIR", 15, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+            Text printLbl = CreateText("PrintLabel", printObj.transform, "🖨️ IMPRIMIR", 26, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
             SetFullStretch(printLbl.gameObject);
             printLbl.raycastTarget = false;
 
@@ -581,7 +564,7 @@ namespace ArtSimulator
 
             TabletButtonTrigger delTrig = delObj.AddComponent<TabletButtonTrigger>();
 
-            Text delLbl = CreateText("DeleteLabel", delObj.transform, "🗑️ BORRAR", 14, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+            Text delLbl = CreateText("DeleteLabel", delObj.transform, "🗑️ BORRAR", 24, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
             SetFullStretch(delLbl.gameObject);
             delLbl.raycastTarget = false;
 
@@ -613,12 +596,12 @@ namespace ArtSimulator
             decBtn.targetGraphic = decImg;
             TabletButtonTrigger decTrig = decBtnObj.AddComponent<TabletButtonTrigger>();
 
-            Text decTxt = CreateText("DecLabel", decBtnObj.transform, "－", 18, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+            Text decTxt = CreateText("DecLabel", decBtnObj.transform, "－", 28, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
             SetFullStretch(decTxt.gameObject);
             decTxt.raycastTarget = false;
 
             // Etiqueta Central de Cantidad
-            Text qtyLabel = CreateText("QuantityLabel", qtyBarObj.transform, "1 copia", 15, FontStyle.Bold, new Color(0.12f, 0.16f, 0.25f), TextAnchor.MiddleCenter);
+            Text qtyLabel = CreateText("QuantityLabel", qtyBarObj.transform, "1 copia", 26, FontStyle.Bold, new Color(0.12f, 0.16f, 0.25f), TextAnchor.MiddleCenter);
             RectTransform qlRt = qtyLabel.GetComponent<RectTransform>();
             qlRt.anchorMin = new Vector2(0.20f, 0.10f);
             qlRt.anchorMax = new Vector2(0.80f, 0.90f);
@@ -642,7 +625,7 @@ namespace ArtSimulator
             incBtn.targetGraphic = incImg;
             TabletButtonTrigger incTrig = incBtnObj.AddComponent<TabletButtonTrigger>();
 
-            Text incTxt = CreateText("IncLabel", incBtnObj.transform, "＋", 18, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+            Text incTxt = CreateText("IncLabel", incBtnObj.transform, "＋", 28, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
             SetFullStretch(incTxt.gameObject);
             incTxt.raycastTarget = false;
 
@@ -666,7 +649,7 @@ namespace ArtSimulator
             scansTabBg.raycastTarget = true;
             Button scansTabBtn = scansTabObj.AddComponent<Button>();
             scansTabBtn.targetGraphic = scansTabBg;
-            Text scansTabTxt = CreateText("Label", scansTabObj.transform, "🖨️ ESCANEOS", 14, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+            Text scansTabTxt = CreateText("Label", scansTabObj.transform, "🖨️ ESCANEOS", 24, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
             SetFullStretch(scansTabTxt.gameObject);
             scansTabTxt.raycastTarget = false;
 
@@ -682,7 +665,7 @@ namespace ArtSimulator
             photosTabBg.raycastTarget = true;
             Button photosTabBtn = photosTabObj.AddComponent<Button>();
             photosTabBtn.targetGraphic = photosTabBg;
-            Text photosTabTxt = CreateText("Label", photosTabObj.transform, "📷 FOTOS", 14, FontStyle.Bold, new Color(0.20f, 0.25f, 0.35f), TextAnchor.MiddleCenter);
+            Text photosTabTxt = CreateText("Label", photosTabObj.transform, "📷 FOTOS", 24, FontStyle.Bold, new Color(0.20f, 0.25f, 0.35f), TextAnchor.MiddleCenter);
             SetFullStretch(photosTabTxt.gameObject);
             photosTabTxt.raycastTarget = false;
 
@@ -690,7 +673,7 @@ namespace ArtSimulator
             GameObject scrollObj = CreateHorizontalScrollView("GalleryScroll", panel.transform, new Vector2(0.51f, 0.05f), new Vector2(0.96f, 0.77f), out Transform contentContainer);
 
             // Mensaje vacío
-            Text emptyTxt = CreateText("EmptyState", scrollObj.transform, "Pasa un dibujo por la impresora\npara escanearlo y verlo aquí.", 18, FontStyle.Italic, new Color(0.4f, 0.45f, 0.55f), TextAnchor.MiddleCenter);
+            Text emptyTxt = CreateText("EmptyState", scrollObj.transform, "Pasa un dibujo por la impresora\npara escanearlo y verlo aquí.", 28, FontStyle.Italic, new Color(0.4f, 0.45f, 0.55f), TextAnchor.MiddleCenter);
             SetFullStretch(emptyTxt.gameObject);
             emptyTxt.raycastTarget = false;
 
@@ -753,7 +736,7 @@ namespace ArtSimulator
             Button tabStoreBtn = tabStoreObj.AddComponent<Button>();
             tabStoreBtn.targetGraphic = tsImg;
 
-            Text tabStoreLabel = CreateText("Lbl", tabStoreObj.transform, "TIENDA", 16, FontStyle.Bold, new Color(0.1f, 0.12f, 0.18f), TextAnchor.MiddleCenter);
+            Text tabStoreLabel = CreateText("Lbl", tabStoreObj.transform, "TIENDA", 26, FontStyle.Bold, new Color(0.1f, 0.12f, 0.18f), TextAnchor.MiddleCenter);
             SetFullStretch(tabStoreLabel.gameObject);
             tabStoreLabel.raycastTarget = false;
 
@@ -1026,7 +1009,7 @@ namespace ArtSimulator
             TabletButtonTrigger trig = returnObj.AddComponent<TabletButtonTrigger>();
             trig.SetAction("Volver al Inicio", () => TabletManager.Instance?.ShowHome());
 
-            Text lbl = CreateText("Lbl", returnObj.transform, "← 🏠 VOLVER", 15, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+            Text lbl = CreateText("Lbl", returnObj.transform, "← 🏠 MENÚ", 24, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
             SetFullStretch(lbl.gameObject);
             lbl.raycastTarget = false;
 
@@ -1051,7 +1034,7 @@ namespace ArtSimulator
             titleText.raycastTarget = false;
 
             // Botón destacado de volver al menú principal (← 🏠 VOLVER)
-            homeBtn = CreateReturnButton(topBar.transform, new Vector2(0.98f, 0.5f), new Vector2(0.98f, 0.5f), new Vector2(160, 44));
+            homeBtn = CreateReturnButton(topBar.transform, new Vector2(0.98f, 0.5f), new Vector2(0.98f, 0.5f), new Vector2(210, 56));
             return topBar;
         }
 
