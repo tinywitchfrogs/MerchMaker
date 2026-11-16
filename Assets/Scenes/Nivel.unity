@@ -1012,6 +1012,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Mesa1.0 (1)
       objectReference: {fileID: 0}
+    - target: {fileID: 3459193194213827910, guid: 6489bdd4f1e6f6743b61bd309213376f, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 996b07d021e71aa4fb89a25e0ef06fa8, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects:
     - {fileID: -8700617353114198275, guid: 6489bdd4f1e6f6743b61bd309213376f, type: 3}
@@ -5050,6 +5054,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Mesa1.0
       objectReference: {fileID: 0}
+    - target: {fileID: 3459193194213827910, guid: 6489bdd4f1e6f6743b61bd309213376f, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 996b07d021e71aa4fb89a25e0ef06fa8, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects:
     - {fileID: -8700617353114198275, guid: 6489bdd4f1e6f6743b61bd309213376f, type: 3}
@@ -6793,6 +6801,10 @@ PrefabInstance:
       propertyPath: m_Enabled
       value: 1
       objectReference: {fileID: 0}
+    - target: {fileID: 4957988634167246065, guid: 3a43e204236c84948b2a3a80eb35f85d, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 73b8d319c817ba44293bbd7daa1186ca, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects:
     - {fileID: 65702495048144492, guid: 3a43e204236c84948b2a3a80eb35f85d, type: 3}
@@ -9372,6 +9384,10 @@ PrefabInstance:
       propertyPath: m_LocalPosition.z
       value: -0
       objectReference: {fileID: 0}
+    - target: {fileID: -1461304994638716399, guid: 6ad274f6df973ce4e8d0e78ffa7238db, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 8b53ac22c6ab812498cf6d3b8e95a07c, type: 2}
     - target: {fileID: 919132149155446097, guid: 6ad274f6df973ce4e8d0e78ffa7238db, type: 3}
       propertyPath: m_Name
       value: Caja
