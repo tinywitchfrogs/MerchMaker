@@ -4,8 +4,9 @@ using UnityEngine.XR.Interaction.Toolkit.Interactables;
 namespace ArtSimulator
 {
     /// <summary>
-    /// Componente para la punta del lápiz/pincel de Realidad Virtual.
-    /// Detecta contacto físico con cualquier DrawingCanvas y dibuja en 3D en tiempo real.
+    /// Componente para la punta del lápiz de Realidad Virtual.
+    /// Dibuja ÚNICAMENTE cuando la punta física del lápiz está tocando el papel.
+    /// Si el lápiz se despega de la superficie o no se sostiene en la mano, cesa de dibujar inmediatamente.
     /// </summary>
     public class VRPenTip : MonoBehaviour
     {
@@ -24,7 +25,6 @@ namespace ArtSimulator
             grabInteractable = GetComponentInParent<XRGrabInteractable>();
             if (tipTransform == null)
             {
-                // Si tiene un hijo (cono de la punta), usarlo automáticamente
                 if (transform.childCount > 0)
                 {
                     Transform cone = transform.Find("Cone") ?? transform.Find("Tip") ?? transform.GetChild(0);
@@ -74,105 +74,96 @@ namespace ArtSimulator
 
         private void Update()
         {
-            // Solo dibujar si el lápiz está siendo sostenido por el jugador
-            if (grabInteractable != null && grabInteractable.isSelected)
+            // 1. REGLA FUNDAMENTAL: Solo puede dibujar si el lápiz está sostenido directamente en la mano del jugador
+            if (grabInteractable == null || !grabInteractable.isSelected)
             {
-                // Posición exacta en la punta física del lápiz
-                Vector3 tipPos = tipTransform != null ? tipTransform.position : transform.position;
-                Vector3 dir;
-                if (tipTransform != null && tipTransform != transform)
-                {
-                    // Eje longitudinal del lápiz hacia la punta
-                    dir = (tipTransform.position - transform.position).normalized;
-                }
-                else
-                {
-                    dir = transform.up;
-                }
-                if (dir.sqrMagnitude < 0.001f) dir = transform.forward;
+                StopDrawing();
+                return;
+            }
 
-                // 1. Raycast corto y ultra-preciso directo desde la punta (sin desfase lateral)
-                bool hitSurface = false;
-                if (Physics.Raycast(tipPos - dir * 0.015f, dir, out RaycastHit hit, 0.045f))
+            // Evitar que el lápiz dibuje si está a distancia (por ejemplo si fue seleccionado mediante raycast lejano)
+            if (grabInteractable.interactorsSelecting != null && grabInteractable.interactorsSelecting.Count > 0)
+            {
+                var interactor = grabInteractable.interactorsSelecting[0];
+                if (interactor != null && Vector3.Distance(transform.position, interactor.transform.position) > 0.40f)
                 {
-                    var canvas = hit.collider.GetComponent<DrawingCanvas>() ?? hit.collider.GetComponentInParent<DrawingCanvas>();
+                    StopDrawing();
+                    return;
+                }
+            }
+
+            // Posición exacta en la punta física del lápiz
+            Vector3 tipPos = tipTransform != null ? tipTransform.position : transform.position;
+            Vector3 dir = (tipTransform != null && tipTransform != transform)
+                ? (tipTransform.position - transform.position).normalized
+                : transform.forward;
+            if (dir.sqrMagnitude < 0.001f) dir = transform.forward;
+
+            // 2. DETECCIÓN FÍSICA ESTRICTA: El lápiz SOLO dibuja si la punta está en contacto real con el papel
+            DrawingCanvas contactedCanvas = null;
+            Vector3 contactPoint = tipPos;
+
+            // Comprobación A: Raycast ultra corto (máximo 8 mm) desde la punta para detectar contacto superficial
+            if (Physics.Raycast(tipPos - dir * 0.004f, dir, out RaycastHit hit, 0.012f, ~0, QueryTriggerInteraction.Ignore))
+            {
+                var canvas = hit.collider.GetComponent<DrawingCanvas>() ?? hit.collider.GetComponentInParent<DrawingCanvas>();
+                if (canvas != null)
+                {
+                    contactedCanvas = canvas;
+                    contactPoint = hit.point;
+                }
+            }
+
+            // Comprobación B: Esfera diminuta de 8 mm en el ápice de la punta si la punta ya está tocando físicamente
+            if (contactedCanvas == null)
+            {
+                Collider[] hits = Physics.OverlapSphere(tipPos, 0.008f, ~0, QueryTriggerInteraction.Collide);
+                for (int i = 0; i < hits.Length; i++)
+                {
+                    var canvas = hits[i].GetComponent<DrawingCanvas>() ?? hits[i].GetComponentInParent<DrawingCanvas>();
                     if (canvas != null)
                     {
-                        hitSurface = true;
-                        currentCanvas = canvas;
-                        isTouchingCanvas = true;
-                        currentCanvas.SetBrushColor(penColor);
-                        currentCanvas.SetBrushSize(brushSize);
-                        currentCanvas.DrawAtWorldPoint(hit.point);
+                        contactedCanvas = canvas;
+                        contactPoint = tipPos;
+                        break;
                     }
                 }
-                else if (Physics.SphereCast(tipPos - dir * 0.015f, 0.015f, dir, out RaycastHit sHit, 0.05f))
+            }
+
+            // 3. APLICAR DIBUJO O DETENERLO EN TIEMPO REAL
+            if (contactedCanvas != null)
+            {
+                if (currentCanvas != null && currentCanvas != contactedCanvas)
                 {
-                    var canvas = sHit.collider.GetComponent<DrawingCanvas>() ?? sHit.collider.GetComponentInParent<DrawingCanvas>();
-                    if (canvas != null)
-                    {
-                        hitSurface = true;
-                        currentCanvas = canvas;
-                        isTouchingCanvas = true;
-                        currentCanvas.SetBrushColor(penColor);
-                        currentCanvas.SetBrushSize(brushSize);
-                        currentCanvas.DrawAtWorldPoint(sHit.point);
-                    }
+                    currentCanvas.StopStroke();
                 }
 
-                // 2. Fallback por esfera de contacto o triggers
-                if (!hitSurface && isTouchingCanvas && currentCanvas != null)
-                {
-                    currentCanvas.SetBrushColor(penColor);
-                    currentCanvas.SetBrushSize(brushSize);
-                    currentCanvas.DrawAtWorldPoint(tipPos);
-                }
+                currentCanvas = contactedCanvas;
+                isTouchingCanvas = true;
+                currentCanvas.SetBrushColor(penColor);
+                currentCanvas.SetBrushSize(brushSize);
+                currentCanvas.DrawAtWorldPoint(contactPoint);
             }
             else
             {
-                if (currentCanvas != null)
-                {
-                    currentCanvas.StopStroke();
-                    currentCanvas = null;
-                }
-                isTouchingCanvas = false;
+                // Si la punta se separó del papel aunque sea 1 milímetro, suspender el trazo inmediatamente
+                StopDrawing();
             }
         }
 
-        private void OnTriggerEnter(Collider other)
+        private void StopDrawing()
         {
-            var canvas = other.GetComponent<DrawingCanvas>() ?? other.GetComponentInParent<DrawingCanvas>();
-            if (canvas != null)
-            {
-                currentCanvas = canvas;
-                isTouchingCanvas = true;
-            }
-        }
-
-        private void OnTriggerStay(Collider other)
-        {
-            if (currentCanvas == null)
-            {
-                currentCanvas = other.GetComponent<DrawingCanvas>() ?? other.GetComponentInParent<DrawingCanvas>();
-            }
             if (currentCanvas != null)
             {
-                isTouchingCanvas = true;
+                currentCanvas.StopStroke();
+                currentCanvas = null;
             }
+            isTouchingCanvas = false;
         }
 
-        private void OnTriggerExit(Collider other)
+        private void OnDisable()
         {
-            var canvas = other.GetComponent<DrawingCanvas>() ?? other.GetComponentInParent<DrawingCanvas>();
-            if (canvas != null && canvas == currentCanvas)
-            {
-                if (currentCanvas != null)
-                {
-                    currentCanvas.StopStroke();
-                }
-                currentCanvas = null;
-                isTouchingCanvas = false;
-            }
+            StopDrawing();
         }
     }
 }

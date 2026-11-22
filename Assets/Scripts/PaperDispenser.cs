@@ -19,7 +19,7 @@ namespace ArtSimulator
         [Header("Configuración del Dispensador")]
         [SerializeField] private Transform spawnPoint;
         [SerializeField] private GameObject paperTemplate;
-        [SerializeField] private int spawnedPaperCount = 3; // Dibujo_1, 2, 3 ya existen al inicio
+        [SerializeField] private int spawnedPaperCount = 1; // Solo Dibujo_1 existe inicialmente en la mesa
 
         private AudioSource audioSource;
         private float lastDispenseTime = -1f;
@@ -55,7 +55,7 @@ namespace ArtSimulator
         private void CountExistingDrawings()
         {
             var drawings = FindObjectsByType<ScannableDrawing>(FindObjectsInactive.Include);
-            int maxId = 3;
+            int maxId = 1;
             for (int i = 0; i < drawings.Length; i++)
             {
                 if (drawings[i] != null && drawings[i].IsOriginal && drawings[i].name.StartsWith("Dibujo_"))
@@ -73,14 +73,15 @@ namespace ArtSimulator
         public ScannableDrawing DispenseNewPaper()
         {
             // Debounce para no generar múltiples hojas por un solo clic
-            if (Time.unscaledTime - lastDispenseTime < 0.4f) return null;
-            lastDispenseTime = Time.unscaledTime;
+            float currentTime = Time.realtimeSinceStartup;
+            if (currentTime - lastDispenseTime < 0.4f) return null;
+            lastDispenseTime = currentTime;
 
             spawnedPaperCount++;
             string paperName = $"Dibujo_{spawnedPaperCount}";
             string paperTitle = $"Dibujo {spawnedPaperCount}";
 
-            Vector3 spawnPos = spawnPoint != null ? spawnPoint.position : (transform.position + Vector3.up * 0.08f);
+            Vector3 spawnPos = spawnPoint != null ? spawnPoint.position : (transform.position + Vector3.up * 0.12f);
             Quaternion spawnRot = transform.rotation;
 
             GameObject template = paperTemplate;
@@ -119,10 +120,10 @@ namespace ArtSimulator
             if (canvas == null) canvas = newPaper.AddComponent<DrawingCanvas>();
             canvas.ResetToFreshCanvas(paperTitle);
 
-            // Configurar BoxCollider
+            // Configurar BoxCollider ergonómico
             BoxCollider bc = newPaper.GetComponent<BoxCollider>();
             if (bc == null) bc = newPaper.AddComponent<BoxCollider>();
-            bc.size = new Vector3(10f, 0.5f, 10f);
+            bc.size = new Vector3(8.5f, 0.2f, 8.5f);
             bc.center = Vector3.zero;
             bc.enabled = true;
 
@@ -132,11 +133,14 @@ namespace ArtSimulator
             rb.isKinematic = true;
             rb.useGravity = true;
 
-            // Ignorar colisiones entre la hoja recién dispensada y el dispensador para que jamás quede atrapada
-            Collider dispCol = GetComponent<Collider>();
-            if (dispCol != null && bc != null)
+            // Ignorar colisiones entre la hoja recién dispensada y todos los colisionadores de la pila y mesa
+            Collider[] dispCols = GetComponentsInChildren<Collider>();
+            for (int i = 0; i < dispCols.Length; i++)
             {
-                Physics.IgnoreCollision(dispCol, bc, true);
+                if (dispCols[i] != null && bc != null)
+                {
+                    Physics.IgnoreCollision(dispCols[i], bc, true);
+                }
             }
 
             // Reproducir sonido de hoja de papel

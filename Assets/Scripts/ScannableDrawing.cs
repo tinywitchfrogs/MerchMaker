@@ -1,4 +1,6 @@
 using UnityEngine;
+using UnityEngine.UI;
+using UnityEngine.XR.Interaction.Toolkit.Interactables;
 
 namespace ArtSimulator
 {
@@ -9,62 +11,44 @@ namespace ArtSimulator
         [SerializeField] private string artworkTitle = "Ilustración Artística";
         [SerializeField] private Texture2D artworkTexture;
         [SerializeField] public bool isOriginal = true;
+        [SerializeField] private float qualityScore = 0.5f;
 
         public bool IsOriginal => isOriginal;
+        public float QualityScore
+        {
+            get => qualityScore;
+            set
+            {
+                qualityScore = Mathf.Clamp(value, 0.1f, 1.0f);
+                if (artworkData != null) artworkData.qualityScore = qualityScore;
+            }
+        }
 
         private Renderer meshRenderer;
         private ArtworkData artworkData;
         private bool isScanned = false;
+        private XRGrabInteractable grabInteractable;
+        private GameObject starIndicatorObj;
 
         public bool IsScanned => isScanned;
 
-        private static readonly System.Collections.Generic.HashSet<ScannableDrawing> allDrawings = new System.Collections.Generic.HashSet<ScannableDrawing>();
-        private static bool globalAurasVisible = true;
-
-        
-        /// <summary>
-        /// Oculta o muestra todas las auras de dibujos (originales y copias), útil al tomar fotos con la cámara.
-        /// </summary>
         public static void SetAllAurasVisible(bool visible)
         {
-            globalAurasVisible = visible;
-            foreach (var drawing in allDrawings)
-            {
-                if (drawing != null)
-                {
-                    drawing.SetAuraVisible(visible);
-                }
-            }
-        }
-
-        private void OnEnable()
-        {
-            allDrawings.Add(this);
-            SetAuraVisible(globalAurasVisible);
-        }
-
-        private void OnDisable()
-        {
-            allDrawings.Remove(this);
-        }
-
-        private void OnDestroy()
-        {
-            allDrawings.Remove(this);
-        }
-
-        public void SetAuraVisible(bool visible)
-        {
-            Transform existingAura = transform.Find("AuraEffect");
-            if (existingAura != null)
-            {
-                existingAura.gameObject.SetActive(visible);
-            }
+            // Mantenido por retrocompatibilidad con llamadas externas
         }
 
         private void Awake()
         {
             meshRenderer = GetComponent<Renderer>();
+            grabInteractable = GetComponent<XRGrabInteractable>();
+
+            // Limpiar cualquier aura residual previa
+            Transform oldAura = transform.Find("AuraEffect");
+            if (oldAura != null)
+            {
+                if (Application.isPlaying) Destroy(oldAura.gameObject);
+                else DestroyImmediate(oldAura.gameObject);
+            }
 
             if (string.IsNullOrEmpty(artworkTitle))
             {
@@ -73,7 +57,6 @@ namespace ArtSimulator
 
             if (artworkTexture == null)
             {
-                // Intentar recuperar del material existente si ya tiene textura
                 if (meshRenderer != null && meshRenderer.sharedMaterial != null)
                 {
                     Texture matTex = meshRenderer.sharedMaterial.HasProperty("_BaseMap")
@@ -85,7 +68,6 @@ namespace ArtSimulator
                     }
                 }
 
-                // Si es un dibujo original y aún no tiene textura, generar la de muestra
                 if (artworkTexture == null && isOriginal)
                 {
                     artworkTexture = GenerateSampleArtwork(artworkTitle);
@@ -98,62 +80,88 @@ namespace ArtSimulator
                 artworkData = new ArtworkData(artworkTitle, artworkTexture);
             }
 
-            UpdateAuraVisuals();
+            SetupStarIndicator();
+        }
+
+        private void SetupStarIndicator()
+        {
+            Transform existingStar = transform.Find("OriginalStarIndicator");
+            if (existingStar != null)
+            {
+                starIndicatorObj = existingStar.gameObject;
+            }
+
+            if (!isOriginal)
+            {
+                if (starIndicatorObj != null) starIndicatorObj.SetActive(false);
+                return;
+            }
+
+            if (starIndicatorObj == null)
+            {
+                starIndicatorObj = new GameObject("OriginalStarIndicator");
+                starIndicatorObj.transform.SetParent(transform, false);
+
+                // Ubicar en la esquina superior derecha del plano de la hoja
+                starIndicatorObj.transform.localPosition = new Vector3(3.6f, 0.006f, 3.6f);
+                starIndicatorObj.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+                starIndicatorObj.transform.localScale = new Vector3(0.003f, 0.003f, 0.003f);
+
+                Canvas starCanvas = starIndicatorObj.AddComponent<Canvas>();
+                starCanvas.renderMode = RenderMode.WorldSpace;
+                var rt = starIndicatorObj.GetComponent<RectTransform>();
+                rt.sizeDelta = new Vector2(100, 100);
+
+                GameObject textObj = new GameObject("StarText");
+                textObj.transform.SetParent(starIndicatorObj.transform, false);
+                var tRt = textObj.AddComponent<RectTransform>();
+                tRt.anchorMin = Vector2.zero;
+                tRt.anchorMax = Vector2.one;
+                tRt.offsetMin = Vector2.zero;
+                tRt.offsetMax = Vector2.zero;
+
+                Text starTxt = textObj.AddComponent<Text>();
+                starTxt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+                starTxt.fontSize = 72;
+                starTxt.fontStyle = FontStyle.Bold;
+                starTxt.alignment = TextAnchor.MiddleCenter;
+                starTxt.color = new Color(1.0f, 0.84f, 0.0f, 0.95f); // Dorado brillante
+                starTxt.text = "★";
+                starTxt.raycastTarget = false;
+            }
+
+            // Iniciar oculto (solo visible al tomar la hoja)
+            starIndicatorObj.SetActive(false);
+        }
+
+        private void Update()
+        {
+            if (grabInteractable == null)
+            {
+                grabInteractable = GetComponent<XRGrabInteractable>();
+            }
+
+            // Solo los dibujos originales muestran la estrella en la esquina al ser sostenidos
+            if (isOriginal && starIndicatorObj != null)
+            {
+                bool isHeld = (grabInteractable != null && grabInteractable.isSelected) ||
+                              (FirstPersonPlayerController.Instance != null && FirstPersonPlayerController.Instance.IsHoldingObject(transform));
+
+                if (starIndicatorObj.activeSelf != isHeld)
+                {
+                    starIndicatorObj.SetActive(isHeld);
+                }
+            }
+            else if (starIndicatorObj != null && starIndicatorObj.activeSelf)
+            {
+                starIndicatorObj.SetActive(false);
+            }
         }
 
         public void SetIsOriginal(bool original)
         {
             isOriginal = original;
-            UpdateAuraVisuals();
-        }
-
-        public void UpdateAuraVisuals()
-        {
-            Transform existingAura = transform.Find("AuraEffect");
-            GameObject auraObj;
-            if (existingAura == null)
-            {
-                auraObj = GameObject.CreatePrimitive(PrimitiveType.Quad);
-                auraObj.name = "AuraEffect";
-                auraObj.transform.SetParent(transform, false);
-                Collider col = auraObj.GetComponent<Collider>();
-                if (col != null) Destroy(col);
-            }
-            else
-            {
-                auraObj = existingAura.gameObject;
-            }
-
-            // Alinear plano del aura detrás del dibujo
-            auraObj.transform.localPosition = new Vector3(0, -0.05f, 0);
-            auraObj.transform.localRotation = Quaternion.Euler(90, 0, 0);
-            auraObj.transform.localScale = new Vector3(13.5f, 13.5f, 1.0f);
-
-            Renderer r = auraObj.GetComponent<Renderer>();
-            if (r != null)
-            {
-                Shader unlitShader = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Sprites/Default") ?? Shader.Find("Unlit/Color");
-                Material auraMat = new Material(unlitShader);
-                auraMat.SetFloat("_Cull", 0f);
-
-                Color auraColor = isOriginal 
-                    ? new Color(0.08f, 0.65f, 1.0f, 0.90f)    // Aura Azul eléctrica (Original)
-                    : new Color(1.0f, 0.88f, 0.05f, 0.90f);   // Aura Amarilla dorada (Copia)
-
-                if (auraMat.HasProperty("_BaseColor")) auraMat.SetColor("_BaseColor", auraColor);
-                if (auraMat.HasProperty("_Color")) auraMat.SetColor("_Color", auraColor);
-                r.material = auraMat;
-            }
-
-            Light auraLight = auraObj.GetComponent<Light>();
-            if (auraLight == null) auraLight = auraObj.AddComponent<Light>();
-            auraLight.type = LightType.Point;
-            auraLight.range = 0.85f;
-            auraLight.intensity = 1.6f;
-            auraLight.color = isOriginal ? new Color(0.15f, 0.65f, 1f) : new Color(1f, 0.85f, 0.15f);
-
-            // Respetar estado global de visibilidad (oculto en modo cámara)
-            auraObj.SetActive(globalAurasVisible);
+            SetupStarIndicator();
         }
 
         public ArtworkData GetArtworkData()
@@ -165,14 +173,12 @@ namespace ArtSimulator
 
             Texture2D currentVisualTex = null;
 
-            // 1. Si el dibujo tiene DrawingCanvas, obtener la textura real que el jugador pintó
             DrawingCanvas canvas = GetComponent<DrawingCanvas>();
             if (canvas != null)
             {
                 currentVisualTex = canvas.GetTexture();
             }
 
-            // 2. Si no hay canvas, buscar en el material del Renderer
             if (currentVisualTex == null)
             {
                 if (meshRenderer == null) meshRenderer = GetComponent<Renderer>();
@@ -188,13 +194,11 @@ namespace ArtSimulator
                 }
             }
 
-            // 3. Si sigue nula, usar artworkTexture
             if (currentVisualTex == null && artworkTexture != null)
             {
                 currentVisualTex = artworkTexture;
             }
 
-            // 4. Si aún no hay textura, generar muestra
             if (currentVisualTex == null)
             {
                 currentVisualTex = GenerateSampleArtwork(artworkTitle);
@@ -204,10 +208,9 @@ namespace ArtSimulator
 
             artworkTexture = currentVisualTex;
 
-            // Mantener artworkData sincronizado con la textura real
             if (artworkData == null || artworkData.texture != currentVisualTex)
             {
-                artworkData = new ArtworkData(artworkTitle, currentVisualTex);
+                artworkData = new ArtworkData(artworkTitle, currentVisualTex, qualityScore);
             }
 
             return artworkData;
@@ -219,6 +222,7 @@ namespace ArtSimulator
             artworkData = data;
             artworkTitle = data.title;
             artworkTexture = data.texture;
+            qualityScore = data.qualityScore;
             ApplyTextureToMaterial();
         }
 
@@ -234,7 +238,6 @@ namespace ArtSimulator
 
             if (meshRenderer != null && artworkTexture != null)
             {
-                // Crear instancia del material para no alterar otros objetos
                 Material mat = meshRenderer.material;
                 if (mat.HasProperty("_BaseMap"))
                 {
@@ -253,7 +256,7 @@ namespace ArtSimulator
             int height = 512;
             Texture2D tex = new Texture2D(width, height, TextureFormat.RGBA32, false);
 
-            Color paperColor = Color.white; // Hoja de papel limpia en blanco
+            Color paperColor = Color.white;
             Color[] pixels = new Color[width * height];
 
             for (int i = 0; i < pixels.Length; i++)

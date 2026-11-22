@@ -391,9 +391,68 @@ namespace ArtSimulator
             if (Input.GetMouseButtonDown(0) || Input.GetKeyDown(KeyCode.E)) isInteractPressed = true;
 #endif
 
-            // 1. Si llevamos un dibujo en manos
+            // 1. Si llevamos un dibujo o sobre en manos
             if (heldObject != null)
             {
+                // Prioridad A: Colocar en el Atril de dibujo
+                AtrilController atrilTarget = GetTargetedAtril(ray);
+                if (atrilTarget != null)
+                {
+                    ScannableDrawing drawingHeld = heldObject.GetComponentInChildren<ScannableDrawing>() 
+                        ?? heldObject.GetComponentInParent<ScannableDrawing>();
+                    if (drawingHeld != null)
+                    {
+                        string drawName = drawingHeld.GetArtworkData().title;
+                        SetPromptText($"🎨 <b>Atril</b> - <b>[Clic Izquierdo]</b> o <b>[E]</b> para colocar <b>'{drawName}'</b> en el atril y pintar");
+                        SetReticleColor(Color.cyan);
+
+                        if (isInteractPressed)
+                        {
+                            if (atrilTarget.MountDrawing(drawingHeld))
+                            {
+                                if (heldCollider != null) heldCollider.enabled = true;
+                                heldObject = null;
+                                heldRigidbody = null;
+                                heldCollider = null;
+                            }
+                        }
+                        return;
+                    }
+                }
+
+                // Prioridad B: Insertar copia impresa en un sobre de envíos
+                EnvelopeController envelopeTarget = GetTargetedEnvelope(ray);
+                if (envelopeTarget != null && !envelopeTarget.IsSealed)
+                {
+                    ScannableDrawing drawingHeld = heldObject.GetComponentInChildren<ScannableDrawing>() 
+                        ?? heldObject.GetComponentInParent<ScannableDrawing>();
+                    if (drawingHeld != null && !drawingHeld.IsOriginal)
+                    {
+                        if (envelopeTarget.IsSealed || (envelopeTarget.TargetOrderCopies > 0 && envelopeTarget.CurrentCopiesCount >= envelopeTarget.TargetOrderCopies))
+                        {
+                            SetPromptText($"✉️ <b>Sobre Completo</b> ({envelopeTarget.CurrentCopiesCount}/{envelopeTarget.TargetOrderCopies}) - ¡No caben más copias!");
+                            SetReticleColor(Color.yellow);
+                            return;
+                        }
+
+                        string drawName = drawingHeld.GetArtworkData().title;
+                        SetPromptText($"✉️ <b>Sobre</b> - <b>[Clic Izquierdo]</b> o <b>[E]</b> para meter copia de <b>'{drawName}'</b> en el sobre");
+                        SetReticleColor(Color.green);
+
+                        if (isInteractPressed)
+                        {
+                            if (envelopeTarget.TryInsertCopy(drawingHeld))
+                            {
+                                if (heldCollider != null) heldCollider.enabled = true;
+                                heldObject = null;
+                                heldRigidbody = null;
+                                heldCollider = null;
+                            }
+                        }
+                        return;
+                    }
+                }
+
                 PrinterController targetedPrinter = GetTargetedPrinter(ray);
                 if (targetedPrinter != null)
                 {
@@ -432,12 +491,12 @@ namespace ArtSimulator
 
                     if (drawingHeld != null && drawingHeld.IsOriginal)
                     {
-                        SetPromptText("⚠️ <b>Caja de Envíos</b> - Es un dibujo ORIGINAL. ¡Solo debes enviar copias impresas!");
+                        SetPromptText("⚠️ <b>Caja de Envíos</b> - Es un dibujo ORIGINAL. ¡Solo debes enviar copias impresas en sobres!");
                         SetReticleColor(new Color(1f, 0.5f, 0f));
                         return;
                     }
 
-                    SetPromptText("📦 <b>Caja de Envíos</b> - <b>[Clic Izquierdo]</b> o pulsa <b>[E]</b> para entregar al pedido");
+                    SetPromptText("📦 <b>Caja de Envíos</b> - <b>[Clic Izquierdo]</b> o pulsa <b>[E]</b> para enviar pedido");
                     SetReticleColor(Color.green);
 
                     if (isInteractPressed)
@@ -446,6 +505,7 @@ namespace ArtSimulator
                         bool delivered = targetedSendBox.ProcessDeliveredObject(objToDeliver);
                         if (delivered)
                         {
+                            if (heldCollider != null) heldCollider.enabled = true;
                             heldObject = null;
                             heldRigidbody = null;
                             heldCollider = null;
@@ -454,7 +514,51 @@ namespace ArtSimulator
                     return;
                 }
 
-                SetPromptText("🖐️ Llevando dibujo - <b>[Clic Izquierdo]</b> o <b>[E]</b> para soltarlo sobre una superficie");
+                // Si llevamos un Sobre de envíos en la mano, permitir sellarlo con [F] directamente
+                EnvelopeController envHeld = heldObject.GetComponentInChildren<EnvelopeController>()
+                    ?? heldObject.GetComponentInParent<EnvelopeController>();
+                if (envHeld != null)
+                {
+                    bool isSealActionPressed = false;
+#if ENABLE_INPUT_SYSTEM
+                    if (kb != null && (kb.fKey.wasPressedThisFrame || (mouse != null && mouse.rightButton.wasPressedThisFrame))) isSealActionPressed = true;
+#else
+                    if (Input.GetKeyDown(KeyCode.F) || Input.GetMouseButtonDown(1)) isSealActionPressed = true;
+#endif
+                    if (!envHeld.IsSealed)
+                    {
+                        if (envHeld.CurrentCopiesCount > 0)
+                        {
+                            SetPromptText($"✉️ <b>Sobre ({envHeld.CurrentCopiesCount} copias)</b> - <b>[F / Clic Der]</b> Sellar sobre  •  <b>[Clic / E]</b> Soltar en mesa");
+                            SetReticleColor(Color.green);
+
+                            if (isSealActionPressed)
+                            {
+                                envHeld.SealEnvelope();
+                                SetPromptText("✓ ¡Sobre cerrado y sellado con éxito! Llévalo a la caja de envíos.");
+                                return;
+                            }
+                        }
+                        else
+                        {
+                            SetPromptText("✉️ <b>Sobre vacío</b> - <b>[Clic / E]</b> Colocar sobre la mesa e insertar copias impresas");
+                            SetReticleColor(Color.yellow);
+                        }
+                    }
+                    else
+                    {
+                        SetPromptText("✉️ <b>Sobre SELLADO</b> - Llévalo a la caja de envíos  •  <b>[Clic / E]</b> Soltar en mesa");
+                        SetReticleColor(Color.green);
+                    }
+
+                    if (isInteractPressed)
+                    {
+                        DropHeldObject();
+                    }
+                    return;
+                }
+
+                SetPromptText("🖐️ Llevando objeto - <b>[Clic Izquierdo]</b> o <b>[E]</b> para soltarlo sobre una superficie");
                 SetReticleColor(Color.yellow);
 
                 if (isInteractPressed)
@@ -642,6 +746,118 @@ namespace ArtSimulator
                 return;
             }
 
+            // 4b. Comprobar si apuntamos al dispensador de sobres
+            EnvelopeDispenser envDispenser = GetTargetedEnvelopeDispenser(ray);
+            if (envDispenser != null)
+            {
+                SetPromptText("✉️ <b>Pila de Sobres</b> - <b>[Clic Izquierdo]</b> o <b>[E]</b> para tomar un sobre");
+                SetReticleColor(Color.cyan);
+
+                if (isInteractPressed)
+                {
+                    EnvelopeController newEnv = envDispenser.DispenseNewEnvelope();
+                    if (newEnv != null && heldObject == null)
+                    {
+                        PickupObject(newEnv.transform);
+                        SetPromptText("🖐️ Llevando Sobre - <b>[Clic / E]</b> para colocar sobre la mesa");
+                    }
+                }
+                return;
+            }
+
+            // 5. Comprobar si apuntamos al Atril de dibujo
+            AtrilController targetedAtril = GetTargetedAtril(ray);
+            if (targetedAtril != null && targetedAtril.HasDrawingMounted)
+            {
+                bool isDrawPressed = false;
+#if ENABLE_INPUT_SYSTEM
+                if (kb != null && (kb.fKey.wasPressedThisFrame || (mouse != null && mouse.rightButton.wasPressedThisFrame))) isDrawPressed = true;
+#else
+                if (Input.GetKeyDown(KeyCode.F) || Input.GetMouseButtonDown(1)) isDrawPressed = true;
+#endif
+                var mountedDrawing = targetedAtril.CurrentMountedDrawing;
+                string title = mountedDrawing != null ? mountedDrawing.GetArtworkData().title : "Dibujo";
+                var canvas = mountedDrawing != null ? mountedDrawing.GetComponent<DrawingCanvas>() : null;
+
+                if (canvas != null)
+                {
+                    SetPromptText($"🎨 <b>[F / Clic Der]</b> Dibujar en el atril  •  🖐️ <b>[Clic / E]</b> Retirar '{title}'");
+                    SetReticleColor(Color.cyan);
+
+                    if (isDrawPressed)
+                    {
+                        EnterDrawingMode(canvas);
+                        return;
+                    }
+                }
+                else
+                {
+                    SetPromptText($"🖐️ <b>[Clic / E]</b> Retirar '{title}' del atril");
+                    SetReticleColor(Color.yellow);
+                }
+
+                if (isInteractPressed)
+                {
+                    var detached = targetedAtril.DetachDrawing();
+                    if (detached != null)
+                    {
+                        PickupObject(detached.transform);
+                    }
+                    return;
+                }
+                return;
+            }
+
+            // 6. Comprobar si apuntamos a un Sobre de envío
+            EnvelopeController targetedEnv = GetTargetedEnvelope(ray);
+            if (targetedEnv != null)
+            {
+                if (!targetedEnv.IsSealed)
+                {
+                    bool isSealPressed = false;
+#if ENABLE_INPUT_SYSTEM
+                    if (kb != null && (kb.fKey.wasPressedThisFrame || (mouse != null && mouse.rightButton.wasPressedThisFrame))) isSealPressed = true;
+#else
+                    if (Input.GetKeyDown(KeyCode.F) || Input.GetMouseButtonDown(1)) isSealPressed = true;
+#endif
+                    if (targetedEnv.CurrentCopiesCount > 0)
+                    {
+                        SetPromptText($"✉️ <b>[Clic / E]</b> Tomar sobre ({targetedEnv.CurrentCopiesCount} copias)  •  📦 <b>[F / Clic Der]</b> Sellar sobre");
+                        SetReticleColor(Color.yellow);
+
+                        if (isSealPressed)
+                        {
+                            targetedEnv.SealEnvelope();
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        SetPromptText($"✉️ <b>[Clic / E]</b> Tomar sobre vacío (inserta copias impresas antes de sellar)");
+                        SetReticleColor(Color.yellow);
+                    }
+
+                    if (isInteractPressed)
+                    {
+                        PickupObject(targetedEnv.transform);
+                        return;
+                    }
+                    return;
+                }
+                else
+                {
+                    SetPromptText($"✉️ <b>[Clic / E]</b> Tomar sobre SELLADO ({targetedEnv.CurrentCopiesCount} copias) listo para envío");
+                    SetReticleColor(Color.green);
+
+                    if (isInteractPressed)
+                    {
+                        PickupObject(targetedEnv.transform);
+                        return;
+                    }
+                    return;
+                }
+            }
+
             // Sin interacción en la mira
             SetPromptText("");
             SetReticleColor(Color.white);
@@ -665,6 +881,25 @@ namespace ArtSimulator
                 if (pd != null) return pd;
                 if (hits[i].collider.name.ToLower().Contains("pila") || hits[i].collider.name.ToLower().Contains("dispenser") || hits[i].collider.name.ToLower().Contains("hojas"))
                     return PaperDispenser.Instance;
+            }
+
+            return null;
+        }
+
+        private EnvelopeDispenser GetTargetedEnvelopeDispenser(Ray ray)
+        {
+            RaycastHit hit;
+            if (Physics.Raycast(ray, out hit, interactionRange, ~0, QueryTriggerInteraction.Collide))
+            {
+                var ed = hit.collider.GetComponentInParent<EnvelopeDispenser>();
+                if (ed != null) return ed;
+            }
+
+            RaycastHit[] hits = Physics.SphereCastAll(ray, 0.25f, interactionRange, ~0, QueryTriggerInteraction.Collide);
+            for (int i = 0; i < hits.Length; i++)
+            {
+                var ed = hits[i].collider.GetComponentInParent<EnvelopeDispenser>();
+                if (ed != null) return ed;
             }
 
             return null;
@@ -711,6 +946,48 @@ namespace ArtSimulator
                 if (sp != null) return sp;
                 if (hits[i].collider.name.ToLower().Contains("envio") || hits[i].collider.name.ToLower().Contains("caja"))
                     return SendProduct.Instance;
+            }
+
+            return null;
+        }
+
+        private AtrilController GetTargetedAtril(Ray ray)
+        {
+            RaycastHit hit;
+            if (Physics.Raycast(ray, out hit, interactionRange, ~0, QueryTriggerInteraction.Collide))
+            {
+                var atril = hit.collider.GetComponentInParent<AtrilController>() ?? hit.collider.GetComponentInChildren<AtrilController>();
+                if (atril != null) return atril;
+                if (hit.collider.name.ToLower().Contains("atril") || hit.collider.name.ToLower().Contains("madera"))
+                    return AtrilController.Instance;
+            }
+
+            RaycastHit[] hits = Physics.SphereCastAll(ray, 0.45f, interactionRange, ~0, QueryTriggerInteraction.Collide);
+            for (int i = 0; i < hits.Length; i++)
+            {
+                var atril = hits[i].collider.GetComponentInParent<AtrilController>() ?? hits[i].collider.GetComponentInChildren<AtrilController>();
+                if (atril != null) return atril;
+                if (hits[i].collider.name.ToLower().Contains("atril"))
+                    return AtrilController.Instance;
+            }
+
+            return null;
+        }
+
+        private EnvelopeController GetTargetedEnvelope(Ray ray)
+        {
+            RaycastHit hit;
+            if (Physics.Raycast(ray, out hit, interactionRange, ~0, QueryTriggerInteraction.Collide))
+            {
+                var env = hit.collider.GetComponentInParent<EnvelopeController>() ?? hit.collider.GetComponentInChildren<EnvelopeController>();
+                if (env != null) return env;
+            }
+
+            RaycastHit[] hits = Physics.SphereCastAll(ray, 0.35f, interactionRange, ~0, QueryTriggerInteraction.Collide);
+            for (int i = 0; i < hits.Length; i++)
+            {
+                var env = hits[i].collider.GetComponentInParent<EnvelopeController>() ?? hits[i].collider.GetComponentInChildren<EnvelopeController>();
+                if (env != null) return env;
             }
 
             return null;
@@ -938,24 +1215,64 @@ namespace ArtSimulator
         {
             if (heldObject == null) return;
 
-            // Si soltamos el dibujo apuntando a la impresora, insertarlo en el escáner
-            PrinterController printerUnderRay = GetTargetedPrinter(new Ray(playerCamera.transform.position, playerCamera.transform.forward));
-            if (printerUnderRay != null)
+            Ray ray = new Ray(playerCamera.transform.position, playerCamera.transform.forward);
+            ScannableDrawing sc = heldObject.GetComponentInChildren<ScannableDrawing>() 
+                ?? heldObject.GetComponentInParent<ScannableDrawing>();
+
+            // 1. Si soltamos el dibujo apuntando al atril, encajarlo en el atril
+            AtrilController atrilUnderRay = GetTargetedAtril(ray);
+            if (atrilUnderRay != null && sc != null)
             {
-                ScannableDrawing sc = heldObject.GetComponentInChildren<ScannableDrawing>() 
-                    ?? heldObject.GetComponentInParent<ScannableDrawing>();
-                if (sc != null)
+                if (heldCollider != null) heldCollider.enabled = true;
+                heldObject = null;
+                heldRigidbody = null;
+                heldCollider = null;
+                atrilUnderRay.MountDrawing(sc);
+                SetPromptText("✓ Dibujo colocado en el atril. <b>[F / Clic Der]</b> para pintar.");
+                return;
+            }
+
+            // 2. Si soltamos una copia apuntando a un sobre, insertarla
+            EnvelopeController envUnderRay = GetTargetedEnvelope(ray);
+            if (envUnderRay != null && sc != null && !sc.IsOriginal && !envUnderRay.IsSealed)
+            {
+                if (envUnderRay.TryInsertCopy(sc))
                 {
                     if (heldCollider != null) heldCollider.enabled = true;
                     heldObject = null;
                     heldRigidbody = null;
                     heldCollider = null;
-                    printerUnderRay.InsertDrawing(sc);
+                    SetPromptText($"✓ Copia introducida en el sobre ({envUnderRay.CurrentCopiesCount}/{envUnderRay.TargetOrderCopies}).");
                     return;
                 }
             }
 
-            // Detectar la superficie apuntada (mesa, impresora, suelo) para apoyar el dibujo
+            // 3. Si soltamos el dibujo apuntando a la impresora, insertarlo en el escáner
+            PrinterController printerUnderRay = GetTargetedPrinter(ray);
+            if (printerUnderRay != null && sc != null)
+            {
+                if (heldCollider != null) heldCollider.enabled = true;
+                heldObject = null;
+                heldRigidbody = null;
+                heldCollider = null;
+                printerUnderRay.InsertDrawing(sc);
+                return;
+            }
+
+            // 4. Si soltamos apuntando a la caja de envíos
+            SendProduct sendUnderRay = GetTargetedSendZone(ray);
+            if (sendUnderRay != null)
+            {
+                GameObject delivered = heldObject.gameObject;
+                if (heldCollider != null) heldCollider.enabled = true;
+                heldObject = null;
+                heldRigidbody = null;
+                heldCollider = null;
+                sendUnderRay.ProcessDeliveredObject(delivered);
+                return;
+            }
+
+            // Detectar la superficie apuntada (mesa, atril, suelo) para apoyar el objeto
             RaycastHit hit;
             if (Physics.Raycast(playerCamera.transform.position, playerCamera.transform.forward, out hit, interactionRange, ~0, QueryTriggerInteraction.Ignore))
             {
@@ -990,7 +1307,7 @@ namespace ArtSimulator
             heldRigidbody = null;
             heldCollider = null;
 
-            SetPromptText("✓ Dibujo colocado en la superficie. Pulsa <b>[Clic]</b> o <b>[E]</b> para volver a tomarlo.");
+            SetPromptText("✓ Objeto colocado en la superficie. Pulsa <b>[Clic]</b> o <b>[E]</b> para volver a tomarlo.");
         }
 
         private void UpdateHeldObjectPosition()

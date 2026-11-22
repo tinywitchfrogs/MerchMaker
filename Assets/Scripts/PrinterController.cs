@@ -60,38 +60,20 @@ namespace ArtSimulator
 
         public Vector3 GetPaperSlotPosition()
         {
-            // Ranura interior frontal de donde sale la hoja impresa hacia el jugador
-            var renderers = GetComponentsInChildren<Renderer>();
-            if (renderers != null && renderers.Length > 0)
-            {
-                Bounds b = renderers[0].bounds;
-                for (int i = 1; i < renderers.Length; i++)
-                {
-                    if (!renderers[i].name.Contains("Aura")) b.Encapsulate(renderers[i].bounds);
-                }
-                Vector3 slotPos = b.center - transform.forward * (b.extents.x - 0.02f);
-                slotPos.y = b.min.y + 0.06f;
-                return slotPos;
-            }
-            return transform.position - transform.forward * 0.20f + transform.up * 0.05f;
+            // Ranura frontal interior de donde sale la hoja impresa hacia el frente
+            return new Vector3(7.85f, -0.070f, -3.61f);
         }
 
         public Vector3 GetPaperTrayPosition()
         {
             // Bandeja exterior frontal donde reposan las copias impresas frente al jugador
-            var renderers = GetComponentsInChildren<Renderer>();
-            if (renderers != null && renderers.Length > 0)
-            {
-                Bounds b = renderers[0].bounds;
-                for (int i = 1; i < renderers.Length; i++)
-                {
-                    if (!renderers[i].name.Contains("Aura")) b.Encapsulate(renderers[i].bounds);
-                }
-                Vector3 trayPos = b.center - transform.forward * (b.extents.x + 0.12f);
-                trayPos.y = b.min.y + 0.05f;
-                return trayPos;
-            }
-            return transform.position - transform.forward * 0.35f + transform.up * 0.05f;
+            return new Vector3(7.62f, -0.075f, -3.61f);
+        }
+
+        public Vector3 GetScannerBedPosition()
+        {
+            // Superficie plana del cristal del escáner exactamente apoyada sobre el cuerpo de la impresora (sin hundirse)
+            return new Vector3(8.395f, 0.120f, -3.58f);
         }
 
         private void SetupPrinterPositions()
@@ -118,17 +100,31 @@ namespace ArtSimulator
                 paperSpawnPoint.rotation = Quaternion.Euler(0, 90, 0);
             }
 
-            // Ajustar el trigger BoxCollider para que cubra el cristal superior del escáner
-            BoxCollider bc = GetComponent<BoxCollider>();
-            if (bc != null)
-            {
-                bc.isTrigger = true;
-                // En espacio local de la impresora (escala ~0.1465):
-                bc.center = new Vector3(0f, 1.5f, 0f);
-                bc.size = new Vector3(4.8f, 3.5f, 4.8f);
-            }
+            // 1. Colisionador físico SÓLIDO para que ninguna hoja ni objeto caiga dentro de la impresora o la mesa
+            BoxCollider solidCol = GetComponent<BoxCollider>();
+            if (solidCol == null) solidCol = gameObject.AddComponent<BoxCollider>();
+            solidCol.isTrigger = false;
+            solidCol.center = new Vector3(0f, 0.8f, 0f);
+            solidCol.size = new Vector3(3.2f, 1.1f, 3.8f);
 
-            // Asegurar Rigidbody en la impresora para que las colisiones y triggers de Unity funcionen siempre
+            // 2. Colisionador Trigger superior para capturar e introducir el dibujo automáticamente
+            Transform triggerChild = transform.Find("ScannerTrigger");
+            BoxCollider scanTrigger;
+            if (triggerChild != null)
+            {
+                scanTrigger = triggerChild.GetComponent<BoxCollider>();
+            }
+            else
+            {
+                GameObject trigObj = new GameObject("ScannerTrigger");
+                trigObj.transform.SetParent(transform, false);
+                scanTrigger = trigObj.AddComponent<BoxCollider>();
+            }
+            scanTrigger.isTrigger = true;
+            scanTrigger.center = new Vector3(0f, 1.8f, 0f);
+            scanTrigger.size = new Vector3(3.0f, 1.5f, 3.5f);
+
+            // Asegurar Rigidbody cinemático en la impresora para física estable
             Rigidbody rb = GetComponent<Rigidbody>();
             if (rb == null) rb = gameObject.AddComponent<Rigidbody>();
             rb.isKinematic = true;
@@ -193,22 +189,12 @@ namespace ArtSimulator
         public bool HasDrawingInside => currentInsertedDrawing != null;
         public ScannableDrawing CurrentInsertedDrawing => currentInsertedDrawing;
 
-        public Vector3 GetScannerBedPosition()
+        private void OnScannerDrawingGrabbed(UnityEngine.XR.Interaction.Toolkit.SelectEnterEventArgs args)
         {
-            // Superficie superior plana del escáner ajustada dinámicamente al nuevo modelo
-            var renderers = GetComponentsInChildren<Renderer>();
-            if (renderers != null && renderers.Length > 0)
+            if (currentInsertedDrawing != null && args.interactableObject.transform == currentInsertedDrawing.transform)
             {
-                Bounds b = renderers[0].bounds;
-                for (int i = 1; i < renderers.Length; i++)
-                {
-                    if (!renderers[i].name.Contains("Aura")) b.Encapsulate(renderers[i].bounds);
-                }
-                Vector3 bedPos = b.center;
-                bedPos.y = b.max.y + 0.006f;
-                return bedPos;
+                RetrieveDrawing();
             }
-            return transform.position + transform.up * 0.38f;
         }
 
         /// <summary>
@@ -220,9 +206,9 @@ namespace ArtSimulator
 
             currentInsertedDrawing = drawing;
 
-            // Colocar el dibujo exactamente sobre el cristal superior del escáner (uniforme y plano)
+            // Colocar el dibujo firmemente encajado sobre el cristal del escáner (orientación horizontal sin atravesar los bordes)
             drawing.transform.position = GetScannerBedPosition();
-            drawing.transform.rotation = Quaternion.Euler(0f, transform.eulerAngles.y, 0f);
+            drawing.transform.rotation = Quaternion.identity;
 
             // Asegurar que el dibujo quede estático y alineado mientras está retenido
             Rigidbody rb = drawing.GetComponent<Rigidbody>();
@@ -240,11 +226,18 @@ namespace ArtSimulator
                 bc.enabled = true;
             }
 
+            var grab = drawing.GetComponent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRGrabInteractable>();
+            if (grab != null)
+            {
+                grab.selectEntered.RemoveListener(OnScannerDrawingGrabbed);
+                grab.selectEntered.AddListener(OnScannerDrawingGrabbed);
+            }
+
             // Escanear inmediatamente y subir a la tableta
             ScanDrawing(drawing);
 
             if (XRPlayerRigManager.Instance != null) { XRPlayerRigManager.Instance.ConfigureDrawingForVR(drawing.gameObject); }
-            Debug.Log($"<color=cyan>[Impresora]</color> Dibujo <b>'{drawing.GetArtworkData().title}'</b> colocado automáticamente en el escáner.");
+            Debug.Log($"<color=cyan>[Impresora]</color> Dibujo <b>'{drawing.GetArtworkData().title}'</b> encajado firmemente en el alimentador.");
             return true;
         }
 
@@ -260,13 +253,20 @@ namespace ArtSimulator
             lastRetrievedDrawing = drawing;
             lastRetrieveTime = Time.time;
 
+            var grab = drawing.GetComponent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRGrabInteractable>();
+            if (grab != null)
+            {
+                grab.selectEntered.RemoveListener(OnScannerDrawingGrabbed);
+            }
+
             BoxCollider bc = drawing.GetComponent<BoxCollider>();
             if (bc != null) bc.enabled = true;
 
             Rigidbody rb = drawing.GetComponent<Rigidbody>();
             if (rb != null)
             {
-                rb.isKinematic = true;
+                rb.isKinematic = false;
+                rb.useGravity = true;
             }
 
             if (XRPlayerRigManager.Instance != null) { XRPlayerRigManager.Instance.ConfigureDrawingForVR(drawing.gameObject); }
@@ -420,7 +420,13 @@ namespace ArtSimulator
                 DestroyImmediate(copyCanvas);
             }
 
-            // Asegurar componente ScannableDrawing y aplicarle el Aura Amarilla de copia
+            // Las copias son limpias: remover cualquier aura o indicador de original clonado
+            Transform clonedAura = newPaper.transform.Find("AuraEffect");
+            if (clonedAura != null) DestroyImmediate(clonedAura.gameObject);
+            Transform clonedStar = newPaper.transform.Find("OriginalStarIndicator");
+            if (clonedStar != null) DestroyImmediate(clonedStar.gameObject);
+
+            // Asegurar componente ScannableDrawing marcado como copia
             ScannableDrawing scannable = newPaper.GetComponent<ScannableDrawing>();
             if (scannable == null)
             {
@@ -433,6 +439,8 @@ namespace ArtSimulator
             if (r != null && copyTexture != null)
             {
                 Material copyMat = new Material(r.sharedMaterial);
+                if (copyMat.HasProperty("_BaseColor")) copyMat.SetColor("_BaseColor", Color.white);
+                if (copyMat.HasProperty("_Color")) copyMat.SetColor("_Color", Color.white);
                 if (copyMat.HasProperty("_BaseMap")) copyMat.SetTexture("_BaseMap", copyTexture);
                 if (copyMat.HasProperty("_MainTex")) copyMat.SetTexture("_MainTex", copyTexture);
                 copyMat.SetFloat("_Cull", 0f); // Dos caras: visible aunque caiga volteada sobre el suelo

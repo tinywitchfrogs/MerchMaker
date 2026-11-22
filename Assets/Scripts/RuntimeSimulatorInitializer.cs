@@ -55,17 +55,11 @@ namespace ArtSimulator
             }
 
             // 2. Impresora
-            GameObject printerObj = GameObject.Find("Impresora");
+            GameObject printerObj = GameObject.Find("impresora color (1)") ?? GameObject.Find("Impresora");
             if (printerObj != null)
             {
-                var pc = printerObj.GetComponent<PrinterController>();
+                var pc = printerObj.GetComponent<PrinterController>() ?? printerObj.GetComponentInParent<PrinterController>();
                 if (pc == null) pc = printerObj.AddComponent<PrinterController>();
-
-                BoxCollider box = printerObj.GetComponent<BoxCollider>();
-                if (box == null) box = printerObj.AddComponent<BoxCollider>();
-                box.isTrigger = true;
-                box.center = new Vector3(0f, 1.75f, 0f);
-                box.size = new Vector3(3.2f, 1.6f, 3.2f);
             }
 
             // 3. Dibujos Interactivos (Originales y lienzos para pintar)
@@ -73,18 +67,6 @@ namespace ArtSimulator
             if (baseDrawing != null)
             {
                 baseDrawing.name = "Dibujo_1";
-
-                if (GameObject.Find("Dibujo_2") == null)
-                {
-                    GameObject d2 = Object.Instantiate(baseDrawing, new Vector3(8.85f, 0.5937f, -7.1495f), baseDrawing.transform.rotation);
-                    d2.name = "Dibujo_2";
-                }
-
-                if (GameObject.Find("Dibujo_3") == null)
-                {
-                    GameObject d3 = Object.Instantiate(baseDrawing, new Vector3(8.30f, 0.5937f, -7.1495f), baseDrawing.transform.rotation);
-                    d3.name = "Dibujo_3";
-                }
             }
 
             System.Collections.Generic.List<GameObject> drawingObjects = new System.Collections.Generic.List<GameObject>();
@@ -141,19 +123,21 @@ namespace ArtSimulator
             GameObject boxObj = GameObject.Find("CajaEnvios") ?? GameObject.Find("Caja");
             if (boxObj != null)
             {
-                if (boxObj.GetComponent<SendProduct>() == null)
+                var existingSend = boxObj.GetComponentInChildren<SendProduct>();
+                if (existingSend == null)
+                {
                     boxObj.AddComponent<SendProduct>();
-
-                Collider col = boxObj.GetComponent<Collider>();
-                if (col == null)
-                {
-                    BoxCollider bc = boxObj.AddComponent<BoxCollider>();
-                    bc.isTrigger = true;
-                    bc.size = new Vector3(1.2f, 1.2f, 1.2f);
-                }
-                else
-                {
-                    col.isTrigger = true;
+                    var col = boxObj.GetComponent<Collider>();
+                    if (col == null)
+                    {
+                        var bc = boxObj.AddComponent<BoxCollider>();
+                        bc.isTrigger = true;
+                        bc.size = new Vector3(0.5f, 0.5f, 0.5f);
+                    }
+                    else
+                    {
+                        col.isTrigger = true;
+                    }
                 }
             }
 

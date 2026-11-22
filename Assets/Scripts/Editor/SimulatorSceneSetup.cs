@@ -64,32 +64,20 @@ namespace ArtSimulator.Editor
                 Debug.LogWarning("[Simulador] No se encontró el GameObject 'Impresora' en la escena activa.");
             }
 
-            // 3. Configurar Hojas de Dibujo (Dibujo_1, Dibujo_2, Dibujo_3)
+            // 3. Configurar Hoja de Dibujo Original (Dibujo_1)
             GameObject baseDrawing = GameObject.Find("Dibujo") ?? GameObject.Find("Dibujo_1");
             if (baseDrawing != null)
             {
                 baseDrawing.name = "Dibujo_1";
                 ConfigureDrawingSheet(baseDrawing, "Dibujo 1", new Vector3(9.4023f, 0.5937f, -7.1495f));
 
-                // Dibujo 2
-                GameObject drawing2 = GameObject.Find("Dibujo_2");
-                if (drawing2 == null)
-                {
-                    drawing2 = Object.Instantiate(baseDrawing, new Vector3(8.85f, 0.5937f, -7.1495f), baseDrawing.transform.rotation);
-                    drawing2.name = "Dibujo_2";
-                }
-                ConfigureDrawingSheet(drawing2, "Dibujo 2", new Vector3(8.85f, 0.5937f, -7.1495f));
+                // Eliminar posibles copias residuales antiguas en la mesa
+                GameObject oldD2 = GameObject.Find("Dibujo_2");
+                if (oldD2 != null) Object.DestroyImmediate(oldD2);
+                GameObject oldD3 = GameObject.Find("Dibujo_3");
+                if (oldD3 != null) Object.DestroyImmediate(oldD3);
 
-                // Dibujo 3
-                GameObject drawing3 = GameObject.Find("Dibujo_3");
-                if (drawing3 == null)
-                {
-                    drawing3 = Object.Instantiate(baseDrawing, new Vector3(8.30f, 0.5937f, -7.1495f), baseDrawing.transform.rotation);
-                    drawing3.name = "Dibujo_3";
-                }
-                ConfigureDrawingSheet(drawing3, "Dibujo 3", new Vector3(8.30f, 0.5937f, -7.1495f));
-
-                Debug.Log("<color=green>[Simulador]</color> 3 Hojas de dibujo configuradas con éxito (Dibujo 1, 2 y 3) con soporte para pintura interactiva.");
+                Debug.Log("<color=green>[Simulador]</color> Hoja de dibujo original configurada con éxito con soporte para pintura interactiva.");
 
                 // Configurar dispensador de hojas de papel limpias
                 SetupPaperDispenser(baseDrawing);

@@ -234,8 +234,8 @@ namespace ArtSimulator
             if (spawnedXROrigin != null)
             {
                 Camera vrCam = spawnedXROrigin.GetComponentInChildren<Camera>();
-                // Orientar hacia la mesa principal de trabajo y dibujo (Mesa1.0 con las hojas y lápices)
-                GameObject mesaObj = GameObject.Find("Mesa1.0");
+                // Orientar hacia la mesa principal de trabajo y dibujo (Mesa Dibujo / Mesa1.0 con las hojas y lápices)
+                GameObject mesaObj = GameObject.Find("Mesa Dibujo") ?? GameObject.Find("Mesa1.0");
                 Vector3 deskCenter = mesaObj != null ? mesaObj.transform.position : new Vector3(5.62f, -0.07f, -0.15f);
                 deskCenter.y = -0.07f;
 
@@ -365,6 +365,9 @@ namespace ArtSimulator
                     iam.actionAssets = new List<InputActionAsset> { defaultInputActions };
                     iam.EnableInput();
                 }
+
+                // Configurar límites de alcance y desactivar manipulación infinita de distancia
+                ConfigureInteractorsAndGrabLimits(spawnedXROrigin);
             }
 
             // 2. Instanciar Simulador SOLO en el Editor cuando no hay visor fisico conectado
@@ -442,10 +445,8 @@ namespace ArtSimulator
                     var fpc = c.GetComponent<FirstPersonPlayerController>();
                     if (fpc != null) fpc.enabled = false;
 
-                    if (Application.platform == RuntimePlatform.Android)
-                    {
-                        c.gameObject.SetActive(false);
-                    }
+                    // Desactivar siempre el GameObject de DesktopPlayer en modo VR para eliminar su CharacterController
+                    c.gameObject.SetActive(false);
                 }
             }
 
@@ -603,6 +604,35 @@ namespace ArtSimulator
             }
         }
 
+        public void ConfigureInteractorsAndGrabLimits(GameObject rig)
+        {
+            if (rig == null) return;
+
+            // 1. Desactivar manipulación infinita de distancia con la palanca del mando (useManipulationInput = false)
+            // Esto evita que los objetos sostenidos sean empujados hacia el cielo o al infinito
+            var attachControllers = rig.GetComponentsInChildren<UnityEngine.XR.Interaction.Toolkit.Attachment.InteractionAttachController>(true);
+            for (int i = 0; i < attachControllers.Length; i++)
+            {
+                attachControllers[i].useManipulationInput = false;
+            }
+
+            // 2. Limitar distancia máxima del rayo de interacción a 3.5 metros (CurveInteractionCaster)
+            var curveCasters = rig.GetComponentsInChildren<UnityEngine.XR.Interaction.Toolkit.Interactors.Casters.CurveInteractionCaster>(true);
+            for (int i = 0; i < curveCasters.Length; i++)
+            {
+                curveCasters[i].castDistance = 3.5f;
+            }
+
+            // 3. Limitar distancia máxima de cualquier XRRayInteractor
+            var rayInteractors = rig.GetComponentsInChildren<UnityEngine.XR.Interaction.Toolkit.Interactors.XRRayInteractor>(true);
+            for (int i = 0; i < rayInteractors.Length; i++)
+            {
+                rayInteractors[i].maxRaycastDistance = 3.5f;
+            }
+
+            Debug.Log("<color=green>[XR Manager]</color> Límites de agarre configurados: manipulación infinita desactivada, alcance máximo = 3.5m.");
+        }
+
         /// <summary>
         /// Configura los componentes XRGrabInteractable en todos los objetos de la oficina
         /// para que puedan ser agarrados directamente con las manos o el rayo en VR.
@@ -632,6 +662,40 @@ namespace ArtSimulator
                 dispInt.selectEntered.RemoveListener(OnDispenserSelected);
                 dispInt.selectEntered.AddListener(OnDispenserSelected);
             }
+
+            // 4. Dispensador de sobres
+            if (EnvelopeDispenser.Instance != null)
+            {
+                var envDispInt = EnvelopeDispenser.Instance.GetComponent<XRSimpleInteractable>();
+                if (envDispInt == null) envDispInt = EnvelopeDispenser.Instance.gameObject.AddComponent<XRSimpleInteractable>();
+
+                envDispInt.selectEntered.RemoveListener(OnEnvelopeDispenserSelected);
+                envDispInt.selectEntered.AddListener(OnEnvelopeDispenserSelected);
+            }
+
+            // 5. Sobres de envíos
+            var envelopes = FindObjectsByType<EnvelopeController>(FindObjectsInactive.Include);
+            for (int i = 0; i < envelopes.Length; i++)
+            {
+                var grab = envelopes[i].GetComponent<XRGrabInteractable>();
+                if (grab == null) grab = envelopes[i].gameObject.AddComponent<XRGrabInteractable>();
+                grab.movementType = XRBaseInteractable.MovementType.VelocityTracking;
+                grab.throwOnDetach = true;
+            }
+
+            // 6. Atril de dibujo
+            GameObject atrilObj = GameObject.Find("Atril");
+            if (atrilObj != null && atrilObj.GetComponent<AtrilController>() == null)
+            {
+                atrilObj.AddComponent<AtrilController>();
+            }
+
+            // 7. Configurar interactores para que las capturas a distancia atraigan los objetos a la mano
+            var nearFarInteractors = FindObjectsByType<UnityEngine.XR.Interaction.Toolkit.Interactors.NearFarInteractor>(FindObjectsInactive.Include);
+            for (int i = 0; i < nearFarInteractors.Length; i++)
+            {
+                nearFarInteractors[i].farAttachMode = UnityEngine.XR.Interaction.Toolkit.Attachment.InteractorFarAttachMode.Near;
+            }
         }
 
         public void ConfigureTabletForVR(GameObject tabletObj)
@@ -659,9 +723,21 @@ namespace ArtSimulator
             bc.size = new Vector3(6.5f, 10.5f, 1.2f);
             bc.enabled = true;
 
-            // 4. Configurar XRGrabInteractable para sostener directamente en la mano (sin flotar a distancia con el láser)
-            var grab = tabletObj.GetComponent<XRGrabInteractable>();
-            if (grab == null) grab = tabletObj.AddComponent<XRGrabInteractable>();
+            // 4. Configurar TabletAmbidextrousGrab para sostener con CUALQUIERA de las dos manos (ambidiestro)
+            TabletAmbidextrousGrab grab = tabletObj.GetComponent<TabletAmbidextrousGrab>();
+            if (grab == null)
+            {
+                var oldGrabs = tabletObj.GetComponents<XRGrabInteractable>();
+                for (int i = 0; i < oldGrabs.Length; i++)
+                {
+                    if (!(oldGrabs[i] is TabletAmbidextrousGrab))
+                    {
+                        if (Application.isPlaying) Destroy(oldGrabs[i]);
+                        else DestroyImmediate(oldGrabs[i]);
+                    }
+                }
+                grab = tabletObj.AddComponent<TabletAmbidextrousGrab>();
+            }
             grab.movementType = XRBaseInteractable.MovementType.VelocityTracking;
             grab.throwOnDetach = true;
             grab.useDynamicAttach = false;
@@ -669,6 +745,7 @@ namespace ArtSimulator
             grab.matchAttachRotation = false;
             grab.snapToColliderVolume = false;
             grab.attachEaseInTime = 0.15f;
+            grab.selectMode = UnityEngine.XR.Interaction.Toolkit.Interactables.InteractableSelectMode.Multiple; // Permite pasar la tableta de una mano a otra con total fluidez
 
             // Registrar explícitamente el BoxCollider en los colisionadores de agarre del interactuable
             if (!grab.colliders.Contains(bc))
@@ -677,18 +754,32 @@ namespace ArtSimulator
                 grab.colliders.Add(bc);
             }
 
-            // Punto de agarre ergonómico: la tableta se acomoda naturalmente en la mano mirando al jugador
-            Transform attachPoint = tabletObj.transform.Find("VRTabletAttachPoint");
-            if (attachPoint == null)
+            // Punto de agarre ergonómico MANO IZQUIERDA (marco lateral izquierdo / bezel izquierdo)
+            Transform leftAttach = tabletObj.transform.Find("VRTabletLeftAttachPoint");
+            if (leftAttach == null)
             {
-                GameObject ap = new GameObject("VRTabletAttachPoint");
-                ap.transform.SetParent(tabletObj.transform, false);
-                attachPoint = ap.transform;
+                GameObject lap = new GameObject("VRTabletLeftAttachPoint");
+                lap.transform.SetParent(tabletObj.transform, false);
+                leftAttach = lap.transform;
             }
-            // Agarre ergonomico desde el marco lateral (bezel izquierdo) para no tapar la pantalla
-            attachPoint.localPosition = new Vector3(-3.20f, 5.87f, -0.43f);
-            attachPoint.localRotation = Quaternion.Euler(0f, 0f, -90f);
-            grab.attachTransform = attachPoint;
+            leftAttach.localPosition = new Vector3(0.08f, 9.90f, -0.43f);
+            leftAttach.localRotation = Quaternion.Euler(0f, 20f, -90f);
+            grab.LeftHandAttachPoint = leftAttach;
+
+            // Punto de agarre ergonómico MANO DERECHA (marco lateral derecho / bezel derecho)
+            Transform rightAttach = tabletObj.transform.Find("VRTabletRightAttachPoint");
+            if (rightAttach == null)
+            {
+                GameObject rap = new GameObject("VRTabletRightAttachPoint");
+                rap.transform.SetParent(tabletObj.transform, false);
+                rightAttach = rap.transform;
+            }
+            rightAttach.localPosition = new Vector3(0.08f, 1.70f, -0.43f);
+            rightAttach.localRotation = Quaternion.Euler(0f, 20f, -90f);
+            grab.RightHandAttachPoint = rightAttach;
+
+            // Anclaje por defecto (mano izquierda sosteniendo el marco para interactuar con la derecha)
+            grab.attachTransform = leftAttach;
 
             // Ignorar colisiones físicas entre la tableta y los dibujos/copias para que no choquen al tomar fotos
             var allDrawings = FindObjectsByType<ScannableDrawing>(FindObjectsInactive.Include);
@@ -708,7 +799,7 @@ namespace ArtSimulator
 
             // 5. Montar el lienzo UI directamente sobre la pantalla física 3D de la tableta
             MountTabletCanvasOnScreen(tabletObj);
-            Debug.Log("<color=green>[XR Manager]</color> Tableta configurada como objeto físico para sostener con la mano.");
+            Debug.Log("<color=green>[XR Manager]</color> Tableta configurada como objeto físico ambidiestro (sostenible con mano izquierda o derecha).");
         }
 
         private void OnTabletGrabbed(SelectEnterEventArgs args)
@@ -828,6 +919,35 @@ namespace ArtSimulator
                 if (newPaper != null)
                 {
                     ConfigureDrawingForVR(newPaper.gameObject);
+
+                    // Si el jugador pulsó con su mano o rayo sobre la pila, poner la hoja directamente en su mano
+                    var grab = newPaper.GetComponent<XRGrabInteractable>();
+                    if (grab != null && args != null && args.manager != null && args.interactorObject != null)
+                    {
+                        var interactor = args.interactorObject;
+                        args.manager.SelectExit(interactor, args.interactableObject);
+                        args.manager.SelectEnter(interactor, grab);
+                        Debug.Log("<color=green>[XR Manager]</color> Hoja limpia dispensada directamente a la mano VR del jugador.");
+                    }
+                }
+            }
+        }
+
+        private void OnEnvelopeDispenserSelected(SelectEnterEventArgs args)
+        {
+            if (EnvelopeDispenser.Instance != null)
+            {
+                EnvelopeController newEnv = EnvelopeDispenser.Instance.DispenseNewEnvelope();
+                if (newEnv != null)
+                {
+                    var grab = newEnv.GetComponent<XRGrabInteractable>();
+                    if (grab != null && args != null && args.manager != null && args.interactorObject != null)
+                    {
+                        var interactor = args.interactorObject;
+                        args.manager.SelectExit(interactor, args.interactableObject);
+                        args.manager.SelectEnter(interactor, grab);
+                        Debug.Log("<color=green>[XR Manager]</color> Sobre nuevo dispensado directamente a la mano VR del jugador.");
+                    }
                 }
             }
         }
@@ -974,8 +1094,8 @@ namespace ArtSimulator
 
         private void SetupTableColliders()
         {
-            // 1. Mesa principal de trabajo y dibujo (Mesa1.0)
-            GameObject mesa = GameObject.Find("Mesa1.0");
+            // 1. Mesa principal de trabajo y dibujo (Mesa Dibujo / Mesa1.0)
+            GameObject mesa = GameObject.Find("Mesa Dibujo") ?? GameObject.Find("Mesa1.0");
             if (mesa != null)
             {
                 var bc = mesa.GetComponent<BoxCollider>();
@@ -984,8 +1104,8 @@ namespace ArtSimulator
                 bc.size = new Vector3(4.85f, 0.28f, 8.35f);
             }
 
-            // 2. Mesa secundaria de impresora y envios (Mesa1.0 (1))
-            GameObject mesa2 = GameObject.Find("Mesa1.0 (1)");
+            // 2. Mesa secundaria de impresora (Mesa Impresora / Mesa1.0 (1))
+            GameObject mesa2 = GameObject.Find("Mesa Impresora") ?? GameObject.Find("Mesa1.0 (1)");
             if (mesa2 != null)
             {
                 var bc2 = mesa2.GetComponent<BoxCollider>();
@@ -994,7 +1114,17 @@ namespace ArtSimulator
                 bc2.size = new Vector3(4.85f, 0.28f, 8.35f);
             }
 
-            // 3. Caja de lapices sobre la mesa
+            // 3. Mesa de envíos y logística (Mesa Envios)
+            GameObject mesa3 = GameObject.Find("Mesa Envios");
+            if (mesa3 != null)
+            {
+                var bc3 = mesa3.GetComponent<BoxCollider>();
+                if (bc3 == null) bc3 = mesa3.AddComponent<BoxCollider>();
+                bc3.center = new Vector3(0f, 4.30f, 0f);
+                bc3.size = new Vector3(4.85f, 0.28f, 8.35f);
+            }
+
+            // 4. Caja de lapices sobre la mesa
             GameObject caja = GameObject.Find("caja_lapices");
             if (caja != null)
             {
@@ -1006,7 +1136,7 @@ namespace ArtSimulator
                 }
             }
 
-            // 4. Ignorar colisión entre el jugador y la caja de envíos para que jamás quede atrapado
+            // 5. Ignorar colisión entre el jugador, elementos del taller y la caja de envíos
             SendProduct sendBox = FindAnyObjectByType<SendProduct>();
             if (sendBox != null)
             {
@@ -1017,7 +1147,7 @@ namespace ArtSimulator
                     for (int i = 0; i < allCols.Length; i++)
                     {
                         string cName = allCols[i].name;
-                        if (cName.Contains("Player") || cName.Contains("XR") || cName.Contains("Origin"))
+                        if (cName.Contains("Player") || cName.Contains("XR") || cName.Contains("Origin") || cName.ToLower().Contains("impresora") || cName.ToLower().Contains("tijera") || cName.ToLower().Contains("sobre"))
                         {
                             Physics.IgnoreCollision(allCols[i], boxCol, true);
                         }

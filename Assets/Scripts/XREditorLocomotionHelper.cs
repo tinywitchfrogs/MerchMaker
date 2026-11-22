@@ -45,9 +45,9 @@ namespace ArtSimulator
 
             // Dimensiones ergonómicas para atravesar puertas y acercarse a escritorios cómodamente
             characterController.height = 1.75f;
-            characterController.radius = 0.30f;
+            characterController.radius = 0.18f;
             characterController.center = new Vector3(0f, 0.875f, 0f);
-            characterController.skinWidth = 0.04f;
+            characterController.skinWidth = 0.02f;
             characterController.minMoveDistance = 0f;
             characterController.stepOffset = 0.35f;
             characterController.slopeLimit = 45f;

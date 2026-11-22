@@ -12,6 +12,7 @@ namespace ArtSimulator
         [SerializeField] private GameObject imagesScreenPanel;
         [SerializeField] private GameObject cameraScreenPanel;
         [SerializeField] private GameObject storeScreenPanel;
+        [SerializeField] private GameObject bottomDockBar;
 
         [Header("Apps")]
         [SerializeField] private TabletGalleryApp galleryApp;
@@ -90,11 +91,15 @@ namespace ArtSimulator
             if (imagesScreenPanel != null) imagesScreenPanel.SetActive(screen == TabletScreen.Images);
             if (cameraScreenPanel != null) cameraScreenPanel.SetActive(screen == TabletScreen.Camera);
             if (storeScreenPanel != null) storeScreenPanel.SetActive(screen == TabletScreen.Store);
+
+            // El botón de casa del dock inferior no es necesario en el menú principal (ya estamos en él),
+            // pero se mantiene activo en el resto de aplicaciones (Cámara, Galería, Tienda) para poder volver al inicio.
+            if (bottomDockBar != null) bottomDockBar.SetActive(screen != TabletScreen.Home);
         }
 
         public void EnsureReferences()
         {
-            if (homeScreenPanel == null || imagesScreenPanel == null || cameraScreenPanel == null || storeScreenPanel == null)
+            if (homeScreenPanel == null || imagesScreenPanel == null || cameraScreenPanel == null || storeScreenPanel == null || bottomDockBar == null)
             {
                 GameObject canvasObj = GetTabletCanvasObject();
                 if (canvasObj != null)
@@ -106,6 +111,7 @@ namespace ArtSimulator
                         Transform images = screenArea.Find("ImagesScreen");
                         Transform camera = screenArea.Find("CameraScreen");
                         Transform store = screenArea.Find("StoreScreen");
+                        Transform dock = screenArea.Find("BottomDockBar");
 
                         if (home != null) homeScreenPanel = home.gameObject;
                         if (images != null)
@@ -123,6 +129,7 @@ namespace ArtSimulator
                             storeScreenPanel = store.gameObject;
                             storeApp = store.GetComponent<TabletStoreApp>();
                         }
+                        if (dock != null) bottomDockBar = dock.gameObject;
                     }
                 }
             }
@@ -202,12 +209,18 @@ namespace ArtSimulator
                 }
             }
 
-            // 3. Botones Home (Inicio) en todas las pantallas
+            // 3. Botones Home (Inicio) y Dock Home en todas las pantallas
+            SetupButton(canvasObj.transform, "TabletDeviceFrame/ScreenArea/BottomDockBar/DockHomeButton", "Volver al Inicio", () =>
+            {
+                if (TabletManager.Instance != null) TabletManager.Instance.ShowHome();
+            });
+
             var allButtons = canvasObj.GetComponentsInChildren<Button>(true);
             for (int i = 0; i < allButtons.Length; i++)
             {
                 Button btn = allButtons[i];
-                if (btn.name == "HomeButton")
+                string bName = btn.name.ToLower();
+                if (bName.Contains("home") || bName.Contains("hogar") || bName.Contains("volver"))
                 {
                     SetupSingleButton(btn, "Volver al Inicio", () =>
                     {

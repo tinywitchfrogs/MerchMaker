@@ -160,8 +160,8 @@ namespace ArtSimulator
             if (viewfinderDisplay != null)
             {
                 viewfinderDisplay.texture = cameraRenderTexture;
-                // Escala horizontal invertida (-1) para contrarrestar la escala negativa del lienzo padre
-                viewfinderDisplay.rectTransform.localScale = new Vector3(-1f, 1f, 1f);
+                // Escala orientada al derecho para ver a través de la tableta como una ventana transparente
+                viewfinderDisplay.rectTransform.localScale = Vector3.one;
             }
         }
 
@@ -333,7 +333,7 @@ namespace ArtSimulator
             if (viewfinderDisplay != null)
             {
                 if (cameraRenderTexture != null) viewfinderDisplay.texture = cameraRenderTexture;
-                viewfinderDisplay.rectTransform.localScale = new Vector3(-1f, 1f, 1f);
+                viewfinderDisplay.rectTransform.localScale = Vector3.one;
             }
 
             if (shutterButton != null)
@@ -392,7 +392,7 @@ namespace ArtSimulator
 
             if (viewfinderDisplay != null)
             {
-                viewfinderDisplay.rectTransform.localScale = new Vector3(-1f, 1f, 1f);
+                viewfinderDisplay.rectTransform.localScale = Vector3.one;
             }
 
             // En VR las auras se mantienen visibles en el mundo físico para ubicar las hojas fácilmente
@@ -453,9 +453,40 @@ namespace ArtSimulator
 
                 RenderTexture.active = prevRT;
 
+                // Detectar si la cámara apuntaba a un dibujo en el atril o la mesa para transferir su calidad y esfuerzo
+                float photoQuality = 0.5f;
+                if (tabletCamera != null)
+                {
+                    Ray ray = new Ray(tabletCamera.transform.position, tabletCamera.transform.forward);
+                    if (Physics.Raycast(ray, out RaycastHit hit, 3.5f))
+                    {
+                        var scannable = hit.collider.GetComponentInParent<ScannableDrawing>();
+                        if (scannable != null)
+                        {
+                            photoQuality = scannable.QualityScore;
+                        }
+                    }
+                    else
+                    {
+                        var drawings = FindObjectsByType<ScannableDrawing>(FindObjectsInactive.Exclude);
+                        float bestDot = 0.60f;
+                        foreach (var d in drawings)
+                        {
+                            if (d == null || !d.gameObject.activeInHierarchy) continue;
+                            Vector3 dir = (d.transform.position - tabletCamera.transform.position).normalized;
+                            float dot = Vector3.Dot(tabletCamera.transform.forward, dir);
+                            if (dot > bestDot)
+                            {
+                                bestDot = dot;
+                                photoQuality = d.QualityScore;
+                            }
+                        }
+                    }
+                }
+
                 if (TabletManager.Instance != null)
                 {
-                    TabletManager.Instance.AddCapturedPhoto(captured);
+                    TabletManager.Instance.AddCapturedPhoto(captured, photoQuality);
                 }
             }
 

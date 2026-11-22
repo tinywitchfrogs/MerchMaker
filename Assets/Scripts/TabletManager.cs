@@ -165,7 +165,10 @@ namespace ArtSimulator
                 scannedArtworks.Clear();
                 capturedPhotos.Clear();
                 photoArtworks.Clear();
+                storeProducts.Clear();
+                currentOrders.Clear();
                 photoCounter = 0;
+                hasGeneratedFirstTutorialOrder = false;
                 orderRoutine = StartCoroutine(OrderGeneratorRoutine());
             }
             SetPhysicalTabletVisuals(true);
@@ -231,18 +234,19 @@ namespace ArtSimulator
         }
 
         [SerializeField] private int photoCounter = 0;
+        private bool hasGeneratedFirstTutorialOrder = false;
 
-        public void AddCapturedPhoto(Texture2D photo)
+        public void AddCapturedPhoto(Texture2D photo, float qualityScore = 0.5f)
         {
             if (photo == null) return;
             photoCounter++;
             capturedPhotos.Add(photo);
 
-            // Registrar exclusivamente en la galería fotográfica de la tableta con ID único y número consecutivo
-            ArtworkData photoArtwork = new ArtworkData($"Foto #{photoCounter}", photo);
+            // Registrar en la galería fotográfica con su índice de calidad y esfuerzo
+            ArtworkData photoArtwork = new ArtworkData($"Foto #{photoCounter}", photo, qualityScore);
             photoArtworks.Add(photoArtwork);
 
-            Debug.Log($"<color=green>[Tableta]</color> Foto #{photoCounter} guardada en la galería fotográfica. Total fotos activas: {photoArtworks.Count}");
+            Debug.Log($"<color=green>[Tableta]</color> Foto #{photoCounter} guardada (Calidad: {qualityScore:P0}). Total fotos activas: {photoArtworks.Count}");
             OnPhotosChanged?.Invoke();
         }
 
@@ -290,12 +294,24 @@ namespace ArtSimulator
             }
         }
 
-        public ProductItem PublishProduct(string title, Texture2D photo, int price)
+        public ProductItem PublishProduct(string title, Texture2D photo, int price, float qualityScore = 0.5f)
         {
-            ProductItem newProduct = new ProductItem(title, photo, price);
+            ProductItem newProduct = new ProductItem(title, photo, price, qualityScore);
             storeProducts.Add(newProduct);
-            Debug.Log($"<color=yellow>[Tienda]</color> Nuevo producto publicado: {newProduct.title} a ${newProduct.price}");
+            Debug.Log($"<color=yellow>[Tienda]</color> Nuevo producto publicado: {newProduct.title} a ${newProduct.price} | Calidad: {newProduct.GetStarsString()} | {newProduct.GetDemandBadge()} (x{newProduct.marketDemandMultiplier:F2})");
             OnProductsChanged?.Invoke();
+
+            // Requisito tutorial: Al publicar el primer producto en la tienda, el primer pedido aparece de inmediato
+            // EXACTAMENTE UN único pedido con EXACTAMENTE 1 copia para aprender el flujo sin saturar al jugador.
+            if (!hasGeneratedFirstTutorialOrder)
+            {
+                hasGeneratedFirstTutorialOrder = true;
+                int req = 1; // En el tutorial SIEMPRE exactamente 1 copia (coincide con el paso 7 de imprimir 1 copia y paso 8)
+                OrderItem firstOrder = new OrderItem(newProduct, req);
+                AddOrder(firstOrder);
+                Debug.Log($"<color=magenta>[Tutorial / Pedidos]</color> ⚡ ¡Primer pedido del tutorial entrante de inmediato! (x{req} unidad requerida)");
+            }
+
             return newProduct;
         }
 
@@ -316,15 +332,23 @@ namespace ArtSimulator
                 yield return new WaitForSeconds(1f);
             }
 
-            // Una vez que sale el primer proyecto en la tienda, dar un tiempo de margen paulatino antes de recibir el primer pedido
+            // REQUISITO ESTRICTO: Mientras el tutorial esté activo, NINGÚN pedido adicional debe generarse.
+            // Solamente existirá el único pedido inicial generado para aprender la mecánica completa.
+            while (WorkshopTutorialManager.Instance != null && !WorkshopTutorialManager.Instance.IsCompleted)
+            {
+                yield return new WaitForSeconds(1f);
+            }
+
+            // Una vez publicado el primer producto y completado el tutorial,
+            // dar el tiempo de espera normal antes de comenzar con los pedidos orgánicos siguientes
             yield return new WaitForSeconds(initialOrderDelay);
 
-            int totalOrdersGenerated = 0;
+            int totalOrdersGenerated = hasGeneratedFirstTutorialOrder ? 1 : 0;
 
             while (true)
             {
-                // Solo si el jugador tiene proyectos a la venta y no hemos alcanzado el límite máximo de pedidos simultáneos
-                if (storeProducts != null && storeProducts.Count > 0 && currentOrders.Count < maxActiveOrders)
+                // Solo si el jugador tiene proyectos a la venta, el tutorial terminó, y no hemos alcanzado el límite máximo de pedidos simultáneos
+                if (storeProducts != null && storeProducts.Count > 0 && currentOrders.Count < maxActiveOrders && (WorkshopTutorialManager.Instance == null || WorkshopTutorialManager.Instance.IsCompleted))
                 {
                     ProductItem chosenProduct = GetProductForNewOrder();
                     if (chosenProduct != null)
@@ -345,30 +369,51 @@ namespace ArtSimulator
 
                 // 3. Progresión paulatina inicial: los primeros pedidos tienen margen extra de aprendizaje
                 float warmupBonus = 0f;
-                if (totalOrdersGenerated < 2)
+                if (totalOrdersGenerated < 3)
                 {
-                    warmupBonus = 15f;
-                }
-                else if (totalOrdersGenerated < 4)
-                {
-                    warmupBonus = 8f;
+                    warmupBonus = 12f;
                 }
 
-                float finalWaitTime = baseInterval + backpressure + warmupBonus;
+                // 4. Multiplicador de Demanda del Mercado:
+                // Si el catálogo tiene alta calidad y precios atractivos, los pedidos llegan mucho más rápido.
+                // Si son garabatos caros, la demanda es baja y tardan bastante en llegar.
+                float avgDemand = 1.0f;
+                if (storeProducts != null && storeProducts.Count > 0)
+                {
+                    float totalDemand = 0f;
+                    for (int i = 0; i < storeProducts.Count; i++) totalDemand += storeProducts[i].marketDemandMultiplier;
+                    avgDemand = Mathf.Clamp(totalDemand / storeProducts.Count, 0.25f, 3.5f);
+                }
+
+                float demandScale = Mathf.Clamp(1.0f / avgDemand, 0.45f, 2.5f);
+                float finalWaitTime = (baseInterval + backpressure + warmupBonus) * demandScale;
                 yield return new WaitForSeconds(finalWaitTime);
             }
         }
 
         private ProductItem GetProductForNewOrder()
         {
-            // Solo generar pedidos de productos/proyectos que el jugador haya publicado en la tienda
-            if (storeProducts != null && storeProducts.Count > 0)
+            if (storeProducts == null || storeProducts.Count == 0) return null;
+
+            // Selección ponderada por la demanda del mercado de cada producto
+            float totalWeight = 0f;
+            for (int i = 0; i < storeProducts.Count; i++)
             {
-                return storeProducts[UnityEngine.Random.Range(0, storeProducts.Count)];
+                totalWeight += Mathf.Max(0.05f, storeProducts[i].marketDemandMultiplier);
             }
 
-            // Si aún no se ha publicado ningún proyecto/producto en la tienda, no generar pedidos
-            return null;
+            float pick = UnityEngine.Random.Range(0f, totalWeight);
+            float accum = 0f;
+            for (int i = 0; i < storeProducts.Count; i++)
+            {
+                accum += Mathf.Max(0.05f, storeProducts[i].marketDemandMultiplier);
+                if (pick <= accum)
+                {
+                    return storeProducts[i];
+                }
+            }
+
+            return storeProducts[UnityEngine.Random.Range(0, storeProducts.Count)];
         }
 
         public void PlayOrderNotificationSound()

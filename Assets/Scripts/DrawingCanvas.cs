@@ -27,9 +27,16 @@ namespace ArtSimulator
         private int lastY = 0;
         private bool hasBeenDrawnOn = false;
 
+        [Header("Métricas de Esfuerzo y Calidad")]
+        private float activeDrawingTime = 0f;
+        private HashSet<Color32> usedColors = new HashSet<Color32>();
+        private float currentQualityScore = 0.5f;
+
         public bool HasBeenDrawnOn => hasBeenDrawnOn;
         public Color CurrentBrushColor => currentBrushColor;
         public int CurrentBrushSize => currentBrushSize;
+        public float ActiveDrawingTime => activeDrawingTime;
+        public float CurrentQualityScore => currentQualityScore;
 
         private void Awake()
         {
@@ -65,6 +72,8 @@ namespace ArtSimulator
             if (meshRenderer != null)
             {
                 Material instancedMat = meshRenderer.sharedMaterial != null ? new Material(meshRenderer.sharedMaterial) : new Material(Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard"));
+                if (instancedMat.HasProperty("_BaseColor")) instancedMat.SetColor("_BaseColor", Color.white);
+                if (instancedMat.HasProperty("_Color")) instancedMat.SetColor("_Color", Color.white);
                 if (instancedMat.HasProperty("_BaseMap")) instancedMat.SetTexture("_BaseMap", drawingTexture);
                 if (instancedMat.HasProperty("_MainTex")) instancedMat.SetTexture("_MainTex", drawingTexture);
                 meshRenderer.material = instancedMat;
@@ -98,10 +107,15 @@ namespace ArtSimulator
             drawingTexture.SetPixels(colorMap);
             drawingTexture.Apply(false);
             hasBeenDrawnOn = false;
+            activeDrawingTime = 0f;
+            usedColors.Clear();
+            currentQualityScore = 0.1f;
 
             if (meshRenderer != null && meshRenderer.sharedMaterial != null)
             {
                 Material instancedMat = meshRenderer.sharedMaterial != null ? new Material(meshRenderer.sharedMaterial) : new Material(Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard"));
+                if (instancedMat.HasProperty("_BaseColor")) instancedMat.SetColor("_BaseColor", Color.white);
+                if (instancedMat.HasProperty("_Color")) instancedMat.SetColor("_Color", Color.white);
                 if (instancedMat.HasProperty("_BaseMap")) instancedMat.SetTexture("_BaseMap", drawingTexture);
                 if (instancedMat.HasProperty("_MainTex")) instancedMat.SetTexture("_MainTex", drawingTexture);
                 meshRenderer.material = instancedMat;
@@ -110,7 +124,8 @@ namespace ArtSimulator
             if (scannableDrawing != null)
             {
                 string finalTitle = string.IsNullOrEmpty(title) ? gameObject.name : title;
-                scannableDrawing.SetArtwork(new ArtworkData(finalTitle, drawingTexture));
+                scannableDrawing.SetArtwork(new ArtworkData(finalTitle, drawingTexture, 0.1f, 0f, 0f));
+                scannableDrawing.QualityScore = 0.1f;
                 scannableDrawing.SetIsOriginal(true);
             }
         }
@@ -160,6 +175,16 @@ namespace ArtSimulator
 
             // Calcular coordenadas locales relativas al plano de Dibujo (extensión -5 a +5)
             Vector3 localPos = transform.InverseTransformPoint(worldPoint);
+
+            // COMPROBACIÓN FÍSICA ESTRICTA: El lápiz debe estar tocando físicamente la superficie del papel
+            // El grosor local del papel es mínimo; si el lápiz está a más de 1.8 cm en el aire (eje Y local), NO dibuja
+            float surfaceDistance = Mathf.Abs(localPos.y) * transform.lossyScale.y;
+            if (surfaceDistance > 0.018f)
+            {
+                pressedLastFrame = false;
+                return false;
+            }
+
             float u = Mathf.InverseLerp(5.0f, -5.0f, localPos.x);
             float v = Mathf.InverseLerp(5.0f, -5.0f, localPos.z);
 
@@ -193,6 +218,12 @@ namespace ArtSimulator
             lastX = px;
             lastY = py;
             hasBeenDrawnOn = true;
+            activeDrawingTime += Time.deltaTime;
+
+            if (currentBrushColor.r < 0.96f || currentBrushColor.g < 0.96f || currentBrushColor.b < 0.96f)
+            {
+                usedColors.Add((Color32)currentBrushColor);
+            }
 
             drawingTexture.SetPixels(colorMap);
             drawingTexture.Apply(false);
@@ -202,10 +233,65 @@ namespace ArtSimulator
         public void StopStroke()
         {
             pressedLastFrame = false;
+            float quality = CalculateQualityMetrics(out float coverage, out float timeSpent, out int colorsCount);
+            currentQualityScore = quality;
+
             if (scannableDrawing != null && drawingTexture != null)
             {
-                scannableDrawing.SetArtwork(new ArtworkData(scannableDrawing.GetArtworkData().title, drawingTexture));
+                string title = scannableDrawing.GetArtworkData() != null ? scannableDrawing.GetArtworkData().title : gameObject.name;
+                scannableDrawing.SetArtwork(new ArtworkData(title, drawingTexture, quality, coverage, timeSpent));
+                scannableDrawing.QualityScore = quality;
             }
+        }
+
+        /// <summary>
+        /// Calcula el índice de calidad y esfuerzo del dibujo:
+        /// - Cobertura del lienzo (área pintada vs fondo blanco): 45% peso
+        /// - Tiempo activo invertido dibujando: 35% peso
+        /// - Variedad de colores utilizados: 20% peso
+        /// </summary>
+        public float CalculateQualityMetrics(out float coverage, out float timeSpent, out int colorsCount)
+        {
+            timeSpent = activeDrawingTime;
+            colorsCount = usedColors.Count;
+
+            if (colorMap == null || colorMap.Length == 0)
+            {
+                coverage = 0f;
+                return 0.10f;
+            }
+
+            // Muestreo optimizado de píxeles modificados respecto al blanco original
+            int step = 4; // Muestrear cada 4 píxeles para cálculo ultra-rápido
+            int sampledTotal = 0;
+            int modifiedCount = 0;
+
+            for (int i = 0; i < colorMap.Length; i += step)
+            {
+                sampledTotal++;
+                Color c = colorMap[i];
+                // Si el píxel no es blanco puro / borrador
+                if (c.r < 0.92f || c.g < 0.92f || c.b < 0.92f)
+                {
+                    modifiedCount++;
+                }
+            }
+
+            coverage = sampledTotal > 0 ? (float)modifiedCount / sampledTotal : 0f;
+
+            // Factores normalizados 0..1
+            // 1. Cobertura: Si pintó el fondo o gran parte del lienzo (ej. > 40%), llega a 1.0
+            float coverageFactor = Mathf.Clamp01(coverage / 0.40f);
+
+            // 2. Tiempo invertido: 45 segundos o más otorga puntaje completo de dedicación
+            float timeFactor = Mathf.Clamp01(activeDrawingTime / 40.0f);
+
+            // 3. Variedad cromática: 3 colores o más otorga puntaje completo
+            float colorFactor = Mathf.Clamp01(colorsCount / 3.0f);
+
+            // Calidad final combinada (rango 0.10 a 1.00)
+            float score = (coverageFactor * 0.45f) + (timeFactor * 0.35f) + (colorFactor * 0.20f);
+            return Mathf.Clamp(score, 0.10f, 1.0f);
         }
 
         private void PaintBrushCircle(int cx, int cy)

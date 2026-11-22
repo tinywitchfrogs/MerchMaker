@@ -67,12 +67,12 @@ namespace ArtSimulator
         /// </summary>
         public void RemoveLegacyPencil()
         {
-            var oldPencils = GameObject.FindObjectsByType<GameObject>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            var oldPencils = FindObjectsByType<Transform>(FindObjectsInactive.Include);
             for (int i = 0; i < oldPencils.Length; i++)
             {
                 if (oldPencils[i] != null && oldPencils[i].name.Equals("VRPen_Stylus", StringComparison.OrdinalIgnoreCase))
                 {
-                    Destroy(oldPencils[i]);
+                    Destroy(oldPencils[i].gameObject);
                 }
             }
         }
@@ -190,6 +190,8 @@ namespace ArtSimulator
                 var grab = penTransform.GetComponent<XRGrabInteractable>();
                 if (grab == null) grab = penTransform.gameObject.AddComponent<XRGrabInteractable>();
                 grab.attachTransform = attachPoint;
+                grab.useDynamicAttach = false;
+                grab.snapToColliderVolume = false;
                 grab.throwOnDetach = true;
                 grab.movementType = XRBaseInteractable.MovementType.Instantaneous;
 
@@ -213,7 +215,7 @@ namespace ArtSimulator
 
         private void SpawnProceduralPencils()
         {
-            GameObject mesaObj = GameObject.Find("Mesa1.0");
+            GameObject mesaObj = GameObject.Find("Mesa Dibujo") ?? GameObject.Find("Mesa1.0");
             Vector3 mesaPos = mesaObj != null ? mesaObj.transform.position : new Vector3(5.62f, -1.45f, -0.15f);
             float tableY = -0.065f;
             float startX = 5.65f;
@@ -351,8 +353,7 @@ namespace ArtSimulator
 
         private void Update()
         {
-            // Auto-rescate: Si algún lápiz cae debajo de la mesa (Y < -0.35m) y no está siendo sostenido,
-            // devolverlo suavemente a su ranura en la mesa o bandeja.
+            // Auto-estabilidad y rescate de lápices
             for (int i = 0; i < activePencils.Count; i++)
             {
                 GameObject p = activePencils[i];
@@ -361,11 +362,19 @@ namespace ArtSimulator
                 var grab = p.GetComponent<XRGrabInteractable>();
                 if (grab != null && grab.isSelected) continue;
 
-                if (p.transform.position.y < -0.35f)
+                var rb = p.GetComponent<Rigidbody>();
+                if (initialPositions.TryGetValue(p.name, out Vector3 initPos))
                 {
-                    if (initialPositions.TryGetValue(p.name, out Vector3 initPos))
+                    // Si el lápiz quedó cinemático en el aire fuera de su bandeja, activar gravedad para que caiga
+                    if (rb != null && rb.isKinematic && Vector3.Distance(p.transform.position, initPos) > 0.04f)
                     {
-                        var rb = p.GetComponent<Rigidbody>();
+                        rb.isKinematic = false;
+                        rb.useGravity = true;
+                    }
+
+                    // Si el lápiz cae debajo de la mesa o vuela fuera del área de trabajo, regresarlo a la bandeja
+                    if (p.transform.position.y < -0.35f || Vector3.Distance(p.transform.position, initPos) > 4.0f)
+                    {
                         if (rb != null)
                         {
                             rb.linearVelocity = Vector3.zero;
@@ -377,7 +386,7 @@ namespace ArtSimulator
                         {
                             p.transform.rotation = initRot;
                         }
-                        Debug.Log($"<color=cyan>[ColoredPenManager]</color> Lápiz <b>{p.name}</b> rescatado del suelo y retornado a su posición.");
+                        Debug.Log($"<color=cyan>[ColoredPenManager]</color> Lápiz <b>{p.name}</b> rescatado y retornado a su posición.");
                     }
                 }
             }
