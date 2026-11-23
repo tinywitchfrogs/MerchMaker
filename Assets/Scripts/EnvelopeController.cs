@@ -36,6 +36,7 @@ namespace ArtSimulator
         private Text statusText;
         private Button sealButton;
         private XRGrabInteractable grabInteractable;
+        private GameObject envelopeCanvasObj;
 
         private void Awake()
         {
@@ -56,29 +57,53 @@ namespace ArtSimulator
         private void Update()
         {
             CheckBoundsAndRespawn();
+            CheckNearbyCopies();
+        }
+
+        private void CheckNearbyCopies()
+        {
+            if (isSealed || (targetOrderCopies > 0 && currentCopiesCount >= targetOrderCopies)) return;
+
+            var drawings = FindObjectsByType<ScannableDrawing>(FindObjectsInactive.Exclude);
+            for (int i = 0; i < drawings.Length; i++)
+            {
+                var d = drawings[i];
+                if (d == null || d.IsOriginal || !d.gameObject.activeInHierarchy) continue;
+                float dist = Vector3.Distance(transform.position, d.transform.position);
+                if (dist <= 0.38f)
+                {
+                    TryInsertCopy(d);
+                    break;
+                }
+            }
         }
 
         public void CheckBoundsAndRespawn()
         {
-            // Protección contra caída al vacío o salida accidental por la ventana
-            if (transform.position.y < -0.8f || transform.position.y > 4.5f ||
-                transform.position.x < 1.0f || transform.position.x > 11.5f ||
-                transform.position.z < -8.5f || transform.position.z > 1.5f)
+            // Solo rescatar en caso extremo si el sobre cae al vacío infinito atravesando el suelo (Y < -5.0f)
+            // No forzar ninguna posición fija: si cae al suelo, el jugador puede recogerlo libremente donde haya caído.
+            if (transform.position.y < -5.0f)
             {
-                RespawnOnDesk();
+                var rb = GetComponent<Rigidbody>();
+                if (rb != null)
+                {
+                    rb.linearVelocity = Vector3.zero;
+                    rb.angularVelocity = Vector3.zero;
+                    rb.isKinematic = false;
+                }
+                transform.position = new Vector3(3.30f, -1.20f, -2.85f); // En el suelo de la oficina bajo la mesa
             }
         }
 
         public void RespawnOnDesk()
         {
+            // Método mantenido por compatibilidad si es invocado externamente
             var rb = GetComponent<Rigidbody>();
             if (rb != null)
             {
-                rb.isKinematic = true;
+                rb.isKinematic = false;
+                rb.useGravity = true;
             }
-            transform.position = new Vector3(3.10f, -0.065f, -2.55f);
-            transform.rotation = Quaternion.Euler(0f, 180f, 90f);
-            Debug.Log("<color=yellow>[Sobre]</color> Sobre recuperado y reposicionado con seguridad en la Mesa de Envíos.");
         }
 
         public void SetupPhysicsAndGrab()
@@ -108,11 +133,11 @@ namespace ArtSimulator
                 cube.localPosition = new Vector3(0f, 1.68f, 0f);
             }
 
-            // BoxCollider físico ajustado con precisión milimétrica al tamaño de un sobre
+            // BoxCollider físico ajustado con holgura ergonómica para facilitar el agarre tanto con mano directa como rayo láser en VR y PC
             var bc = GetComponent<BoxCollider>();
             if (bc == null) bc = gameObject.AddComponent<BoxCollider>();
-            bc.center = new Vector3(0f, 1.68f, -0.24f);
-            bc.size = new Vector3(0.20f, 2.05f, 2.55f);
+            bc.center = new Vector3(0.00f, 1.68f, 0f);
+            bc.size = new Vector3(1.20f, 2.40f, 2.80f);
 
             // Trigger secundario para absorber copias
             var triggerObj = transform.Find("InsertTrigger");
@@ -151,9 +176,12 @@ namespace ArtSimulator
             var rb = GetComponent<Rigidbody>();
             if (rb != null)
             {
+                if (!rb.isKinematic)
+                {
+                    rb.linearVelocity = Vector3.zero;
+                    rb.angularVelocity = Vector3.zero;
+                }
                 rb.isKinematic = true;
-                rb.linearVelocity = Vector3.zero;
-                rb.angularVelocity = Vector3.zero;
             }
         }
 
@@ -202,11 +230,13 @@ namespace ArtSimulator
 
                 statusText = existingCanvas.GetComponentInChildren<Text>();
                 sealButton = existingCanvas.GetComponentInChildren<Button>();
+                envelopeCanvasObj = existingCanvas.gameObject;
                 return;
             }
 
             GameObject canvasObj = new GameObject("EnvelopeCanvas");
             canvasObj.transform.SetParent(transform, false);
+            envelopeCanvasObj = canvasObj;
             // 0.055f para reposar firmemente pegado encima de la cara del sobre
             canvasObj.transform.localPosition = new Vector3(0.055f, 1.68f, 0f);
             canvasObj.transform.localRotation = Quaternion.Euler(0f, 90f, 90f);
@@ -456,7 +486,13 @@ namespace ArtSimulator
         {
             if (statusText == null) SetupWorldStatusUI();
 
-            if (statusText != null)
+            bool showLabel = isSealed || currentCopiesCount > 0;
+            if (envelopeCanvasObj != null)
+            {
+                envelopeCanvasObj.SetActive(showLabel);
+            }
+
+            if (statusText != null && showLabel)
             {
                 if (isSealed)
                 {
@@ -465,16 +501,11 @@ namespace ArtSimulator
                                       $"<b>Contenido:</b> {currentCopiesCount} {(currentCopiesCount == 1 ? "copia" : "copias")} de '{artworkTitle}'\n" +
                                       $"<color=#15803d>✓ LISTO PARA ENVIAR</color>";
                 }
-                else if (currentCopiesCount > 0)
+                else
                 {
                     statusText.text = $"✉️ <b>DESTINATARIO:</b> {customerName}\n" +
                                       $"<b>Progreso:</b> {currentCopiesCount} / {targetOrderCopies} copias\n" +
                                       $"<color=orange>Introduce {targetOrderCopies - currentCopiesCount} más</color>";
-                }
-                else
-                {
-                    // Cuando el sobre está vacío, la etiqueta debe quedar en blanco
-                    statusText.text = "";
                 }
             }
 

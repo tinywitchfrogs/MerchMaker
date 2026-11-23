@@ -1,16 +1,16 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.UI;
 using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.XR.Interaction.Toolkit.Interactables;
-using UnityEngine.XR.Interaction.Toolkit.UI;
 
 namespace ArtSimulator
 {
     /// <summary>
     /// Dispensador físico de sobres en la Mesa de Envíos.
-    /// Al hacer clic (PC) o agarrar/seleccionar (VR), dispensa un sobre nuevo
-    /// listo para recibir copias y enviarse.
+    /// Mantiene siempre un sobre físico listo para agarrar en la parte superior de la pila.
+    /// Al tomar el sobre superior (con VR Grip/Trigger o con clic/E en PC), el sobre se desprende
+    /// a la mano del jugador y el dispensador genera de inmediato el siguiente sobre en la pila.
     /// </summary>
     public class EnvelopeDispenser : MonoBehaviour
     {
@@ -28,11 +28,26 @@ namespace ArtSimulator
         [Header("Configuración del Dispensador")]
         [SerializeField] private GameObject envelopePrefab;
         [SerializeField] private Transform spawnPoint;
-        [SerializeField] private int maxActiveLooseEnvelopes = 6;
 
         private AudioSource audioSource;
         private float lastDispenseTime = -10f;
         private int totalDispensedCount = 0;
+        private EnvelopeController currentTopEnvelope;
+        private bool isRespawningNext = false;
+
+        public EnvelopeController CurrentTopEnvelope => currentTopEnvelope;
+
+        public Vector3 GetStackTopPosition()
+        {
+            if (spawnPoint != null) return spawnPoint.position;
+            return new Vector3(3.65f, -0.045f, -2.85f);
+        }
+
+        public Quaternion GetStackTopRotation()
+        {
+            if (spawnPoint != null) return spawnPoint.rotation;
+            return Quaternion.Euler(0f, 180f, 90f);
+        }
 
         private void Awake()
         {
@@ -48,7 +63,7 @@ namespace ArtSimulator
             if (envelopePrefab == null)
             {
 #if UNITY_EDITOR
-                envelopePrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/modelos y texturas/Sobre02.blend");
+                envelopePrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/SobrePrefab.prefab");
 #endif
             }
 
@@ -60,59 +75,187 @@ namespace ArtSimulator
                 {
                     GameObject spObj = new GameObject("SpawnPoint");
                     spObj.transform.SetParent(transform, false);
-                    spObj.transform.position = new Vector3(3.30f, -0.065f, -2.55f);
+                    spObj.transform.position = new Vector3(3.65f, -0.045f, -2.85f);
                     spawnPoint = spObj.transform;
                 }
             }
 
-            SetupCollidersAndInteractable();
-            SetupWorldStatusUI();
+            // Eliminar canvas 2D residual en el dispensador si existiera (no se usan botones flotantes en la pila)
+            Transform oldCanvas = transform.Find("DispenserCanvas");
+            if (oldCanvas != null)
+            {
+                if (Application.isPlaying) Destroy(oldCanvas.gameObject);
+                else DestroyImmediate(oldCanvas.gameObject);
+            }
+
+            // Eliminar XRSimpleInteractable del dispensador base para que NUNCA bloquee el agarre del sobre superior
+            var simple = GetComponent<XRSimpleInteractable>();
+            if (simple != null)
+            {
+                if (Application.isPlaying) Destroy(simple);
+                else DestroyImmediate(simple);
+            }
+
+            SetupColliders();
         }
 
-        public void SetupCollidersAndInteractable()
+        private void Start()
         {
-            // BoxCollider para clic o rayo de agarre
+            // Solo al iniciar el juego: si ya existe un sobre en la escena descansando sobre la pila, adoptarlo como primer sobre
+            if (currentTopEnvelope == null)
+            {
+                var existing = FindObjectsByType<EnvelopeController>(FindObjectsInactive.Exclude);
+                for (int i = 0; i < existing.Length; i++)
+                {
+                    if (existing[i] != null && Vector3.Distance(existing[i].transform.position, GetStackTopPosition()) <= 0.15f)
+                    {
+                        MountEnvelopeOnStack(existing[i]);
+                        break;
+                    }
+                }
+            }
+
+            EnsureTopEnvelopeReady();
+        }
+
+        private void Update()
+        {
+            // Detectar si el sobre superior fue retirado de la pila por agarre (VR o PC) o por desplazamiento
+            if (currentTopEnvelope != null)
+            {
+                bool isTaken = false;
+                var grab = currentTopEnvelope.GetComponent<XRGrabInteractable>();
+                if (grab != null && grab.isSelected) isTaken = true;
+                if (Vector3.Distance(currentTopEnvelope.transform.position, GetStackTopPosition()) > 0.18f) isTaken = true;
+
+                if (isTaken)
+                {
+                    var taken = currentTopEnvelope;
+                    currentTopEnvelope = null;
+
+                    PlayDispenseSound();
+                    WorkshopTutorialManager.Instance?.NotifyEnvelopeDispensed(taken);
+                    Debug.Log("<color=green>[Dispensador de Sobres]</color> 📬 Sobre retirado de la pila. Preparando siguiente sobre...");
+                    StartCoroutine(RespawnNextOnStackDelayed(0.35f));
+                }
+            }
+            else
+            {
+                if (!isRespawningNext)
+                {
+                    StartCoroutine(RespawnNextOnStackDelayed(0.35f));
+                }
+            }
+        }
+
+        private IEnumerator RespawnNextOnStackDelayed(float delay)
+        {
+            if (isRespawningNext) yield break;
+            isRespawningNext = true;
+            yield return new WaitForSeconds(delay);
+            EnsureTopEnvelopeReady();
+            isRespawningNext = false;
+        }
+
+        public void EnsureTopEnvelopeReady()
+        {
+            // 1. Si ya hay un sobre en la cima de la pila listo para tomar y no está agarrado, mantenerlo
+            if (currentTopEnvelope != null && currentTopEnvelope.gameObject.activeInHierarchy)
+            {
+                var grab = currentTopEnvelope.GetComponent<XRGrabInteractable>();
+                bool isGrabbed = grab != null && grab.isSelected;
+                if (!isGrabbed && Vector3.Distance(currentTopEnvelope.transform.position, GetStackTopPosition()) <= 0.15f)
+                {
+                    return;
+                }
+            }
+
+            // 2. Si el sobre anterior ya fue tomado por el jugador o desplazado de la pila:
+            // Desacoplarlo definitivamente de la pila (jamás teletransportar sobres que el jugador ya sacó).
+            currentTopEnvelope = null;
+
+            // 3. Crear un sobre nuevo independiente en la cima de la pila listo para ser retirado
+            SpawnEnvelopeOnStack();
+        }
+
+        public void MountEnvelopeOnStack(EnvelopeController env)
+        {
+            if (env == null) return;
+            currentTopEnvelope = env;
+            env.transform.position = GetStackTopPosition();
+            env.transform.rotation = GetStackTopRotation();
+            env.transform.localScale = new Vector3(0.12f, 0.12f, 0.12f);
+
+            var rb = env.GetComponent<Rigidbody>();
+            if (rb != null)
+            {
+                if (!rb.isKinematic)
+                {
+                    rb.linearVelocity = Vector3.zero;
+                    rb.angularVelocity = Vector3.zero;
+                }
+                rb.isKinematic = true;
+            }
+
+            // Ignorar colisiones entre la base del dispensador y el sobre
+            var baseCol = GetComponent<BoxCollider>();
+            var envCol = env.GetComponent<BoxCollider>();
+            if (baseCol != null && envCol != null)
+            {
+                Physics.IgnoreCollision(baseCol, envCol, true);
+            }
+
+            var grab = env.GetComponent<XRGrabInteractable>();
+            if (grab != null)
+            {
+                grab.movementType = XRBaseInteractable.MovementType.Instantaneous;
+                grab.throwOnDetach = false;
+                grab.selectEntered.RemoveListener(OnTopEnvelopeGrabbed);
+                grab.selectEntered.AddListener(OnTopEnvelopeGrabbed);
+            }
+
+            env.UpdateVisuals();
+        }
+
+        private void OnTopEnvelopeGrabbed(SelectEnterEventArgs args)
+        {
+            if (currentTopEnvelope != null && args != null && args.interactableObject != null &&
+                args.interactableObject.transform == currentTopEnvelope.transform)
+            {
+                var taken = currentTopEnvelope;
+                currentTopEnvelope = null;
+
+                PlayDispenseSound();
+                WorkshopTutorialManager.Instance?.NotifyEnvelopeDispensed(taken);
+                Debug.Log("<color=green>[Dispensador de Sobres]</color> 📬 Sobre tomado directamente de la pila en VR.");
+                StartCoroutine(RespawnNextOnStackDelayed(0.35f));
+            }
+        }
+
+        public void SetupColliders()
+        {
+            // El BoxCollider del dispensador base debe ser pequeño y estar abajo en la mesa
+            // para NUNCA interferir ni bloquear el sobre que descansa encima de la pila.
             var col = GetComponent<BoxCollider>();
             if (col == null) col = gameObject.AddComponent<BoxCollider>();
             col.isTrigger = false;
-            col.center = new Vector3(0f, 0.05f, 0f);
-            col.size = new Vector3(0.55f, 0.25f, 0.45f);
+            col.center = new Vector3(0f, 0.5f, 0f);
+            col.size = new Vector3(1.20f, 0.80f, 1.20f);
 
-            // XRSimpleInteractable para interactuar en VR
-            var simple = GetComponent<XRSimpleInteractable>();
-            if (simple == null)
+            Transform cubeT = transform.Find("Cube");
+            if (cubeT != null)
             {
-                simple = gameObject.AddComponent<XRSimpleInteractable>();
-            }
-            simple.selectEntered.RemoveListener(OnVRSelect);
-            simple.selectEntered.AddListener(OnVRSelect);
-        }
-
-        private void OnVRSelect(SelectEnterEventArgs args)
-        {
-            var newEnv = DispenseNewEnvelope();
-            if (newEnv != null && args != null && args.manager != null && args.interactorObject != null)
-            {
-                // Solo acoplar directamente si es un agarre físico directo (XRDirectInteractor).
-                // Si fue accionado por rayo a distancia (XRRayInteractor / NearFarInteractor), el sobre permanece
-                // descansando en la mesa de envíos para que el jugador lo tome con calma cuando guste,
-                // evitando cualquier efecto resorte o eyección física.
-                if (args.interactorObject is UnityEngine.XR.Interaction.Toolkit.Interactors.XRDirectInteractor)
+                var cCol = cubeT.GetComponent<BoxCollider>();
+                if (cCol != null)
                 {
-                    var grab = newEnv.GetComponent<XRGrabInteractable>();
-                    if (grab != null)
-                    {
-                        var interactor = args.interactorObject;
-                        args.manager.SelectExit(interactor, args.interactableObject);
-                        args.manager.SelectEnter(interactor, grab);
-                        Debug.Log("<color=green>[Dispensador de Sobres]</color> Sobre colocado directamente en la mano VR del jugador.");
-                    }
+                    if (Application.isPlaying) Destroy(cCol);
+                    else DestroyImmediate(cCol);
                 }
             }
         }
 
         /// <summary>
-        /// Dispensar un sobre al hacer clic desde PC (FirstPersonPlayerController).
+        /// Compatibilidad: dispensar un sobre al hacer clic desde PC (FirstPersonPlayerController).
         /// </summary>
         public void OnPlayerInteract()
         {
@@ -122,77 +265,59 @@ namespace ArtSimulator
         public EnvelopeController DispenseNewEnvelope()
         {
             float now = Time.realtimeSinceStartup;
-            if (now - lastDispenseTime < 0.35f) return null;
+            if (now - lastDispenseTime < 0.35f && currentTopEnvelope != null) return currentTopEnvelope;
             lastDispenseTime = now;
 
-            Vector3 spawnPos = spawnPoint != null ? spawnPoint.position : (transform.position + Vector3.left * 0.30f + Vector3.up * 0.03f);
-            Quaternion spawnRot = Quaternion.Euler(0f, 180f, 90f);
-
-            // Comprobar sobres vacíos existentes en la mesa o fuera de ella
-            var existing = FindObjectsByType<EnvelopeController>(FindObjectsInactive.Exclude);
-            EnvelopeController recyclableEmpty = null;
-            int unsealedCount = 0;
-            for (int i = 0; i < existing.Length; i++)
+            EnsureTopEnvelopeReady();
+            if (currentTopEnvelope != null)
             {
-                if (existing[i] != null && !existing[i].IsSealed && existing[i].gameObject != this.gameObject)
-                {
-                    unsealedCount++;
-                    if (existing[i].CurrentCopiesCount == 0 && recyclableEmpty == null)
-                    {
-                        recyclableEmpty = existing[i];
-                    }
-                }
-            }
+                var env = currentTopEnvelope;
+                currentTopEnvelope = null;
 
-            // Si hay sobres vacíos sin usar que salieron disparados o quedaron lejos, reciclarlos al punto de spawn
-            if (recyclableEmpty != null && (unsealedCount >= maxActiveLooseEnvelopes || Vector3.Distance(recyclableEmpty.transform.position, spawnPos) > 2.5f))
-            {
-                recyclableEmpty.transform.position = spawnPos;
-                recyclableEmpty.transform.rotation = spawnRot;
-                var rbRec = recyclableEmpty.GetComponent<Rigidbody>();
-                if (rbRec != null)
-                {
-                    rbRec.isKinematic = true;
-                }
                 PlayDispenseSound();
-                Debug.Log("<color=green>[Dispensador de Sobres]</color> ♻️ Sobre vacío recuperado y presentado en la mesa.");
-                WorkshopTutorialManager.Instance?.NotifyEnvelopeDispensed(recyclableEmpty);
-                return recyclableEmpty;
+                WorkshopTutorialManager.Instance?.NotifyEnvelopeDispensed(env);
+                StartCoroutine(RespawnNextOnStackDelayed(0.35f));
+                return env;
             }
 
-            totalDispensedCount++;
+            return SpawnEnvelopeOnStack();
+        }
 
-            GameObject newEnvObj;
+        private EnvelopeController SpawnEnvelopeOnStack()
+        {
+            totalDispensedCount++;
+            Vector3 spawnPos = GetStackTopPosition();
+            Quaternion spawnRot = GetStackTopRotation();
+
+            GameObject newEnvObj = null;
             if (envelopePrefab != null)
             {
                 newEnvObj = Instantiate(envelopePrefab, spawnPos, spawnRot);
             }
             else
             {
-                newEnvObj = new GameObject($"Sobre_{totalDispensedCount}");
-                newEnvObj.transform.position = spawnPos;
-                newEnvObj.transform.rotation = spawnRot;
-            }
-
-            newEnvObj.name = $"Sobre_{totalDispensedCount}";
-            newEnvObj.transform.localScale = new Vector3(0.12f, 0.12f, 0.12f);
-
-            // Garantizar material SobreCardboard con doble cara (_Cull = 0) para que nunca se vuelva transparente
-            Material cardboardMat = null;
 #if UNITY_EDITOR
-            cardboardMat = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/modelos y texturas/SobreCardboard.mat");
-#endif
-            if (cardboardMat != null)
-            {
-                var rends = newEnvObj.GetComponentsInChildren<Renderer>(true);
-                for (int r = 0; r < rends.Length; r++)
+                var loaded = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/SobrePrefab.prefab");
+                if (loaded != null)
                 {
-                    if (rends[r].name.Contains("Cube"))
+                    envelopePrefab = loaded;
+                    newEnvObj = Instantiate(loaded, spawnPos, spawnRot);
+                }
+#endif
+                if (newEnvObj == null)
+                {
+                    var template = GameObject.Find("Sobre");
+                    if (template != null)
                     {
-                        rends[r].sharedMaterial = cardboardMat;
+                        newEnvObj = Instantiate(template, spawnPos, spawnRot);
                     }
                 }
             }
+
+            if (newEnvObj == null) return null;
+
+            newEnvObj.name = $"Sobre_{totalDispensedCount}";
+            newEnvObj.transform.localScale = new Vector3(0.12f, 0.12f, 0.12f);
 
             var ctrl = newEnvObj.GetComponent<EnvelopeController>();
             if (ctrl == null) ctrl = newEnvObj.AddComponent<EnvelopeController>();
@@ -200,86 +325,8 @@ namespace ArtSimulator
             ctrl.SetupWorldStatusUI();
             ctrl.UpdateVisuals();
 
-            // Ponerlo listo y firme
-            var rb = newEnvObj.GetComponent<Rigidbody>();
-            if (rb != null)
-            {
-                rb.isKinematic = true;
-            }
-
-            PlayDispenseSound();
-            Debug.Log($"<color=green>[Dispensador de Sobres]</color> ✨ Sobre nuevo #{totalDispensedCount} dispensado en la mesa.");
-
-            // Notificar al tutorial si está escuchando
-            WorkshopTutorialManager.Instance?.NotifyEnvelopeDispensed(ctrl);
-
+            MountEnvelopeOnStack(ctrl);
             return ctrl;
-        }
-
-        public void SetupWorldStatusUI()
-        {
-            Transform existing = transform.Find("DispenserCanvas");
-            if (existing != null)
-            {
-                existing.localPosition = new Vector3(0.26f, 1.68f, 0f);
-                existing.localRotation = Quaternion.Euler(0f, 90f, 90f);
-                existing.localScale = new Vector3(-0.0022f, 0.0022f, 0.0022f);
-                if (existing.GetComponent<GraphicRaycaster>() == null) existing.gameObject.AddComponent<GraphicRaycaster>();
-                if (existing.GetComponent<TrackedDeviceGraphicRaycaster>() == null) existing.gameObject.AddComponent<TrackedDeviceGraphicRaycaster>();
-                return;
-            }
-
-            GameObject canvasObj = new GameObject("DispenserCanvas");
-            canvasObj.transform.SetParent(transform, false);
-            canvasObj.transform.localPosition = new Vector3(0.26f, 1.68f, 0f);
-            canvasObj.transform.localRotation = Quaternion.Euler(0f, 90f, 90f);
-            canvasObj.transform.localScale = new Vector3(-0.0022f, 0.0022f, 0.0022f);
-
-            Canvas canvas = canvasObj.AddComponent<Canvas>();
-            canvas.renderMode = RenderMode.WorldSpace;
-            canvas.overrideSorting = true;
-            canvas.sortingOrder = 5;
-            canvasObj.AddComponent<GraphicRaycaster>();
-            canvasObj.AddComponent<TrackedDeviceGraphicRaycaster>();
-
-            var rt = canvasObj.GetComponent<RectTransform>();
-            rt.sizeDelta = new Vector2(320, 160);
-
-            // Botón interactivo sobre el dispensador
-            GameObject btnObj = new GameObject("DispenserButton", typeof(RectTransform), typeof(Image), typeof(Button));
-            btnObj.transform.SetParent(canvasObj.transform, false);
-            var bRt = btnObj.GetComponent<RectTransform>();
-            bRt.anchorMin = Vector2.zero;
-            bRt.anchorMax = Vector2.one;
-            bRt.offsetMin = Vector2.zero;
-            bRt.offsetMax = Vector2.zero;
-
-            var bgImg = btnObj.GetComponent<Image>();
-            bgImg.color = new Color(0.18f, 0.22f, 0.32f, 0.90f);
-
-            var btn = btnObj.GetComponent<Button>();
-            btn.targetGraphic = bgImg;
-            btn.onClick.AddListener(OnPlayerInteract);
-
-            var trig = btnObj.AddComponent<TabletButtonTrigger>();
-            trig.SetAction("Dispensar Sobre", OnPlayerInteract);
-
-            // Texto
-            GameObject txtObj = new GameObject("Text");
-            txtObj.transform.SetParent(btnObj.transform, false);
-            var txtRt = txtObj.AddComponent<RectTransform>();
-            txtRt.anchorMin = Vector2.zero;
-            txtRt.anchorMax = Vector2.one;
-            txtRt.offsetMin = Vector2.zero;
-            txtRt.offsetMax = Vector2.zero;
-            var txt = txtObj.AddComponent<Text>();
-            txt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            txt.fontSize = 24;
-            txt.fontStyle = FontStyle.Bold;
-            txt.alignment = TextAnchor.MiddleCenter;
-            txt.color = Color.white;
-            txt.text = "📬 PILA DE SOBRES\nToca o haz clic para\ntomar un sobre";
-            txt.raycastTarget = false;
         }
 
         private void PlayDispenseSound()

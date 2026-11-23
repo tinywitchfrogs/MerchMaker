@@ -81,6 +81,10 @@ public class MenuPausa : MonoBehaviour
             {
                 pauseMenu.transform.localScale = Vector3.one;
             }
+            else if (pauseMenu.transform.localScale.sqrMagnitude < 0.000001f)
+            {
+                pauseMenu.transform.localScale = Vector3.one * 0.0016f;
+            }
 
             var canvas = pauseMenu.GetComponent<Canvas>();
             if (canvas != null)
@@ -250,7 +254,10 @@ public class MenuPausa : MonoBehaviour
         var xrControllers = InputSystem.devices;
         for (int i = 0; i < xrControllers.Count; i++)
         {
-            var menuCtrl = xrControllers[i].TryGetChildControl<UnityEngine.InputSystem.Controls.ButtonControl>("menuButton");
+            var menuCtrl = xrControllers[i].TryGetChildControl<UnityEngine.InputSystem.Controls.ButtonControl>("menuButton")
+                        ?? xrControllers[i].TryGetChildControl<UnityEngine.InputSystem.Controls.ButtonControl>("menu")
+                        ?? xrControllers[i].TryGetChildControl<UnityEngine.InputSystem.Controls.ButtonControl>("appMenu")
+                        ?? xrControllers[i].TryGetChildControl<UnityEngine.InputSystem.Controls.ButtonControl>("start");
             if (menuCtrl != null && menuCtrl.wasPressedThisFrame)
             {
                 escapePressed = true;
@@ -264,12 +271,17 @@ public class MenuPausa : MonoBehaviour
         }
 #endif
 
-        // Detección directa en mandos VR (Oculus Touch / Meta Quest 2 botón Menu en mano izquierda)
+        // Detección directa en mandos VR (Oculus Touch / Meta Quest 2 botón Menu en mano izquierda o derecha)
         bool vrMenuCurrent = false;
         var leftHandDevice = UnityEngine.XR.InputDevices.GetDeviceAtXRNode(UnityEngine.XR.XRNode.LeftHand);
-        if (leftHandDevice.isValid && leftHandDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.menuButton, out bool menuVal))
+        if (leftHandDevice.isValid && leftHandDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.menuButton, out bool lMenuVal) && lMenuVal)
         {
-            vrMenuCurrent = menuVal;
+            vrMenuCurrent = true;
+        }
+        var rightHandDevice = UnityEngine.XR.InputDevices.GetDeviceAtXRNode(UnityEngine.XR.XRNode.RightHand);
+        if (rightHandDevice.isValid && rightHandDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.menuButton, out bool rMenuVal) && rMenuVal)
+        {
+            vrMenuCurrent = true;
         }
         if (vrMenuCurrent && !prevVRMenuPressed)
         {

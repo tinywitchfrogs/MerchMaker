@@ -32,8 +32,8 @@ namespace ArtSimulator
             }
             triggerCollider.isTrigger = true;
             // Cobertura ergonómica de la papelera
-            triggerCollider.size = new Vector3(0.55f, 0.70f, 0.55f);
-            triggerCollider.center = new Vector3(0f, 0.45f, 0f);
+            triggerCollider.size = new Vector3(1.10f, 1.10f, 1.10f);
+            triggerCollider.center = new Vector3(0f, 0.55f, 0f);
 
             var rb = GetComponent<Rigidbody>();
             if (rb == null)
@@ -66,6 +66,13 @@ namespace ArtSimulator
 
             if (drawing != null) target = drawing.gameObject;
 
+            // Encontrar si es un sobre (para descartar sobres vacíos o excedentes)
+            EnvelopeController envelope = target.GetComponent<EnvelopeController>()
+                ?? target.GetComponentInParent<EnvelopeController>()
+                ?? target.GetComponentInChildren<EnvelopeController>();
+
+            if (envelope != null) target = envelope.gameObject;
+
             // NUNCA eliminar tableta, jugador, mandos ni lápices
             if (target.GetComponentInParent<TabletManager>() != null || target.GetComponentInChildren<TabletManager>() != null) return;
             if (target.GetComponentInParent<VRPenTip>() != null || target.GetComponentInChildren<VRPenTip>() != null) return;
@@ -77,15 +84,23 @@ namespace ArtSimulator
 
             if (FirstPersonPlayerController.Instance != null && FirstPersonPlayerController.Instance.IsHoldingObject(target.transform)) return;
 
-            // Verificar si es un dibujo, copia, o papel desechable
+            // Verificar si es un dibujo, copia, papel desechable o sobre vacío
             bool isDrawingOrPaper = drawing != null 
                 || target.CompareTag("Dibujo") 
                 || target.name.StartsWith("Dibujo", StringComparison.OrdinalIgnoreCase)
                 || target.name.Contains("Copia") 
                 || target.name.Contains("Paper");
 
-            if (isDrawingOrPaper)
+            bool isEnvelope = envelope != null || target.name.StartsWith("Sobre", StringComparison.OrdinalIgnoreCase);
+
+            if (isDrawingOrPaper || isEnvelope)
             {
+                // Si el dibujo estaba en el atril, desmontarlo limpiamente
+                if (drawing != null && AtrilController.Instance != null && AtrilController.Instance.CurrentMountedDrawing == drawing)
+                {
+                    AtrilController.Instance.DetachDrawing();
+                }
+
                 // Si el jugador de escritorio lo tenía en sus manos, liberar referencia
                 if (FirstPersonPlayerController.Instance != null)
                 {
@@ -97,11 +112,12 @@ namespace ArtSimulator
                 for (int i = 0; i < colliders.Length; i++) colliders[i].enabled = false;
 
                 string objName = target.name;
-                Destroy(target);
+                if (Application.isPlaying) Destroy(target);
+                else DestroyImmediate(target);
 
                 // Feedback sonoro de reciclaje / desecho
                 SoundEffectManager.Play(trashSoundName);
-                Debug.Log($"<color=orange>[Basurero]</color> 🗑️ Objeto desechado y eliminado: <b>{objName}</b>");
+                Debug.Log($"<color=orange>[Basurero]</color> 🗑️ Objeto desechado y eliminado en el basurero: <b>{objName}</b>");
             }
         }
     }

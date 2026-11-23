@@ -71,11 +71,18 @@ namespace ArtSimulator
                 }
             }
 
-            // Posición y rotación de reposo exactas en el frente del atril
-            // Ajustado hacia el frente (Z = -0.720) y ángulo 81° para que el papel descanse
-            // de forma natural en la repisa inferior sin que el enganche superior atraviese la hoja.
-            paperSnapPoint.position = new Vector3(5.60f, 0.285f, -0.720f);
-            paperSnapPoint.rotation = Quaternion.Euler(81.0f, 180f, 0f);
+            // Posición y rotación exactas en la repisa frontal del atril
+            // Descansa en Madera.001 (Y=0.08) completamente por delante de los postes y marco
+            if (paperSnapPoint.parent == transform)
+            {
+                paperSnapPoint.localPosition = new Vector3(0.36f, 1.94f, -0.11f);
+                paperSnapPoint.localRotation = Quaternion.Euler(272f, 270f, 0f);
+            }
+            else
+            {
+                paperSnapPoint.position = new Vector3(5.60f, 0.25f, -0.825f);
+                paperSnapPoint.rotation = Quaternion.Euler(272f, 0f, 0f);
+            }
         }
 
         public void SetupColliders()
@@ -207,6 +214,8 @@ namespace ArtSimulator
                 DetachDrawing();
             }
         }
+
+        public ScannableDrawing UnmountDrawing() => DetachDrawing();
 
         public ScannableDrawing DetachDrawing()
         {

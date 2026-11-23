@@ -71,11 +71,14 @@ namespace ArtSimulator
             // Instanciar material independiente para no afectar otras hojas
             if (meshRenderer != null)
             {
-                Material instancedMat = meshRenderer.sharedMaterial != null ? new Material(meshRenderer.sharedMaterial) : new Material(Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard"));
+                Material baseMat = (meshRenderer.sharedMaterial != null && !meshRenderer.sharedMaterial.name.Contains("(Instance)")) ? meshRenderer.sharedMaterial : null;
+                Material instancedMat = baseMat != null ? new Material(baseMat) : new Material(Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard"));
+                instancedMat.name = $"Mat_{gameObject.name}";
                 if (instancedMat.HasProperty("_BaseColor")) instancedMat.SetColor("_BaseColor", Color.white);
                 if (instancedMat.HasProperty("_Color")) instancedMat.SetColor("_Color", Color.white);
                 if (instancedMat.HasProperty("_BaseMap")) instancedMat.SetTexture("_BaseMap", drawingTexture);
                 if (instancedMat.HasProperty("_MainTex")) instancedMat.SetTexture("_MainTex", drawingTexture);
+                if (instancedMat.HasProperty("_Cull")) instancedMat.SetFloat("_Cull", 0f);
                 meshRenderer.material = instancedMat;
             }
 

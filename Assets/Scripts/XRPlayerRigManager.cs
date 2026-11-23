@@ -21,7 +21,16 @@ namespace ArtSimulator
     /// </summary>
     public class XRPlayerRigManager : MonoBehaviour
     {
-        public static XRPlayerRigManager Instance { get; private set; }
+        private static XRPlayerRigManager instance;
+        public static XRPlayerRigManager Instance
+        {
+            get
+            {
+                if (instance == null) instance = FindAnyObjectByType<XRPlayerRigManager>();
+                return instance;
+            }
+            private set => instance = value;
+        }
 
         [Header("Configuración de Realidad Virtual")]
         [Tooltip("Activa el modo VR y el XR Interaction Simulator al probar en el Editor de Unity")]
@@ -78,6 +87,7 @@ namespace ArtSimulator
 #endif
             }
 
+            EnsureXRInteractionManager();
             DetermineAndSetupVR();
         }
 
@@ -604,9 +614,31 @@ namespace ArtSimulator
             }
         }
 
+        public static XRInteractionManager EnsureXRInteractionManager()
+        {
+            var mgr = FindAnyObjectByType<XRInteractionManager>();
+            if (mgr == null)
+            {
+                var go = new GameObject("XR Interaction Manager");
+                mgr = go.AddComponent<XRInteractionManager>();
+                Debug.Log("<color=green>[XR Manager]</color> XR Interaction Manager asegurado automáticamente en la escena.");
+            }
+            return mgr;
+        }
+
         public void ConfigureInteractorsAndGrabLimits(GameObject rig)
         {
             if (rig == null) return;
+
+            var mgr = EnsureXRInteractionManager();
+            var allInteractors = rig.GetComponentsInChildren<UnityEngine.XR.Interaction.Toolkit.Interactors.XRBaseInteractor>(true);
+            for (int i = 0; i < allInteractors.Length; i++)
+            {
+                if (allInteractors[i] != null && allInteractors[i].interactionManager == null)
+                {
+                    allInteractors[i].interactionManager = mgr;
+                }
+            }
 
             // 1. Desactivar manipulación infinita de distancia con la palanca del mando (useManipulationInput = false)
             // Esto evita que los objetos sostenidos sean empujados hacia el cielo o al infinito
@@ -663,24 +695,21 @@ namespace ArtSimulator
                 dispInt.selectEntered.AddListener(OnDispenserSelected);
             }
 
-            // 4. Dispensador de sobres
+            // 4. Dispensador de sobres (gestionado de forma autónoma por EnvelopeDispenser)
             if (EnvelopeDispenser.Instance != null)
             {
-                var envDispInt = EnvelopeDispenser.Instance.GetComponent<XRSimpleInteractable>();
-                if (envDispInt == null) envDispInt = EnvelopeDispenser.Instance.gameObject.AddComponent<XRSimpleInteractable>();
-
-                envDispInt.selectEntered.RemoveListener(OnEnvelopeDispenserSelected);
-                envDispInt.selectEntered.AddListener(OnEnvelopeDispenserSelected);
+                EnvelopeDispenser.Instance.SetupColliders();
+                EnvelopeDispenser.Instance.EnsureTopEnvelopeReady();
             }
 
-            // 5. Sobres de envíos
+            // 5. Sobres de envíos (agarre instantáneo para evitar efectos elásticos y congelamiento)
             var envelopes = FindObjectsByType<EnvelopeController>(FindObjectsInactive.Include);
             for (int i = 0; i < envelopes.Length; i++)
             {
                 var grab = envelopes[i].GetComponent<XRGrabInteractable>();
                 if (grab == null) grab = envelopes[i].gameObject.AddComponent<XRGrabInteractable>();
-                grab.movementType = XRBaseInteractable.MovementType.VelocityTracking;
-                grab.throwOnDetach = true;
+                grab.movementType = XRBaseInteractable.MovementType.Instantaneous;
+                grab.throwOnDetach = false;
             }
 
             // 6. Atril de dibujo
@@ -695,6 +724,17 @@ namespace ArtSimulator
             for (int i = 0; i < nearFarInteractors.Length; i++)
             {
                 nearFarInteractors[i].farAttachMode = UnityEngine.XR.Interaction.Toolkit.Attachment.InteractorFarAttachMode.Near;
+            }
+
+            // 8. Asegurar asignación del XRInteractionManager a todos los interactables
+            var mgr = EnsureXRInteractionManager();
+            var allInteractables = FindObjectsByType<UnityEngine.XR.Interaction.Toolkit.Interactables.XRBaseInteractable>(FindObjectsInactive.Include);
+            for (int i = 0; i < allInteractables.Length; i++)
+            {
+                if (allInteractables[i] != null && allInteractables[i].interactionManager == null)
+                {
+                    allInteractables[i].interactionManager = mgr;
+                }
             }
         }
 
@@ -928,25 +968,6 @@ namespace ArtSimulator
                         args.manager.SelectExit(interactor, args.interactableObject);
                         args.manager.SelectEnter(interactor, grab);
                         Debug.Log("<color=green>[XR Manager]</color> Hoja limpia dispensada directamente a la mano VR del jugador.");
-                    }
-                }
-            }
-        }
-
-        private void OnEnvelopeDispenserSelected(SelectEnterEventArgs args)
-        {
-            if (EnvelopeDispenser.Instance != null)
-            {
-                EnvelopeController newEnv = EnvelopeDispenser.Instance.DispenseNewEnvelope();
-                if (newEnv != null)
-                {
-                    var grab = newEnv.GetComponent<XRGrabInteractable>();
-                    if (grab != null && args != null && args.manager != null && args.interactorObject != null)
-                    {
-                        var interactor = args.interactorObject;
-                        args.manager.SelectExit(interactor, args.interactableObject);
-                        args.manager.SelectEnter(interactor, grab);
-                        Debug.Log("<color=green>[XR Manager]</color> Sobre nuevo dispensado directamente a la mano VR del jugador.");
                     }
                 }
             }

@@ -1277,7 +1277,14 @@ namespace ArtSimulator
             if (Physics.Raycast(playerCamera.transform.position, playerCamera.transform.forward, out hit, interactionRange, ~0, QueryTriggerInteraction.Ignore))
             {
                 heldObject.position = hit.point + hit.normal * 0.025f;
-                heldObject.rotation = Quaternion.FromToRotation(Vector3.up, hit.normal);
+                if (heldObject.GetComponentInChildren<EnvelopeController>() != null || heldObject.GetComponentInParent<EnvelopeController>() != null)
+                {
+                    heldObject.rotation = Quaternion.Euler(0f, 180f, 90f);
+                }
+                else
+                {
+                    heldObject.rotation = Quaternion.FromToRotation(Vector3.up, hit.normal);
+                }
             }
             else
             {
@@ -1300,7 +1307,15 @@ namespace ArtSimulator
 
             if (heldRigidbody != null)
             {
-                heldRigidbody.isKinematic = true; // Estable sobre la superficie, sin caer al vacío
+                if (heldObject != null && (heldObject.GetComponentInChildren<EnvelopeController>() != null || heldObject.GetComponentInParent<EnvelopeController>() != null))
+                {
+                    heldRigidbody.isKinematic = false;
+                    heldRigidbody.useGravity = true;
+                }
+                else
+                {
+                    heldRigidbody.isKinematic = true; // Estable sobre la superficie, sin caer al vacío
+                }
             }
 
             heldObject = null;

@@ -261,6 +261,13 @@ namespace ArtSimulator
                     break;
 
                 case TutorialStep.Step2_DrawWithPencil:
+                    // Si el atril quedó vacío porque el jugador botó la hoja al basurero, retornar al Paso 1
+                    if (AtrilController.Instance != null && !AtrilController.Instance.HasDrawingMounted && stepTimer > 2.5f)
+                    {
+                        AdvanceToStep(TutorialStep.Step1_MountPaperOnEasel);
+                        break;
+                    }
+
                     // Se avanza cuando se ha dibujado sobre el lienzo
                     bool drawn = false;
                     if (AtrilController.Instance != null && AtrilController.Instance.CurrentMountedDrawing != null)
@@ -411,8 +418,8 @@ namespace ArtSimulator
                 case TutorialStep.Step2_DrawWithPencil:
                     title = "✏️ 2. DIBUJAR TU OBRA";
                     desc = isPCMode
-                        ? "Toma un lápiz (<b>Clic Izq</b>) y dibuja en el atril (o pulsa <b>[F / Clic Der]</b>). ¡Pinta el fondo y usa varios colores para máxima calidad y ventas!"
-                        : "Toma un lápiz de la caja (<b>Grip</b>) y traza tu ilustración. ¡Pintar el fondo y usar colores aumenta el valor de tu arte!";
+                        ? "Toma un lápiz (<b>Clic Izq</b>) y dibuja en el atril (o pulsa <b>[F / Clic Der]</b>). ¡Pinta el fondo y usa varios colores para máxima calidad y ventas!\n\n💡 <i>Sugerencia: Si no te gusta tu dibujo, puedes botarlo al <b>Basurero</b> junto a la mesa y tomar una hoja nueva de la pila.</i>"
+                        : "Toma un lápiz de la caja (<b>Grip</b>) y traza tu ilustración. ¡Pintar el fondo y usar colores aumenta el valor de tu arte!\n\n💡 <i>Sugerencia: Si no te gusta tu dibujo, puedes botarlo al <b>Basurero</b> junto a la mesa y tomar una hoja nueva de la pila.</i>";
                     break;
 
                 case TutorialStep.Step3_ScanDrawingOnPrinter:
@@ -442,15 +449,15 @@ namespace ArtSimulator
                 case TutorialStep.Step7_PrintCopies:
                     title = "🖨️ 7. IMPRIMIR COPIAS FÍSICAS";
                     desc = isPCMode
-                        ? "En la tableta ve a la <b>Galería (Imágenes)</b>, selecciona tu dibujo y presiona <b>'Imprimir'</b> para sacar las copias solicitadas."
-                        : "En la tableta abre la <b>Galería</b>, selecciona tu dibujo y pulsa <b>'Imprimir'</b> para generar las copias en la impresora.";
+                        ? "En la tableta ve a la <b>Galería (Imágenes)</b>, selecciona tu dibujo y presiona <b>'Imprimir'</b> para sacar las copias solicitadas.\n\n💡 <i>Sugerencia: Si imprimiste copias de más (merma), puedes botarlas al <b>Basurero</b> junto a la mesa.</i>"
+                        : "En la tableta abre la <b>Galería</b>, selecciona tu dibujo y pulsa <b>'Imprimir'</b> para generar las copias en la impresora.\n\n💡 <i>Sugerencia: Si imprimiste copias de más (merma), puedes botarlas al <b>Basurero</b> junto a la mesa.</i>";
                     break;
 
                 case TutorialStep.Step8_PackInEnvelope:
                     title = "✉️ 8. EMPACAR COPIAS EN EL SOBRE";
                     desc = isPCMode
-                        ? "Toma un sobre del <b>Dispensador</b> (<b>Clic</b>), introduce las copias impresas requeridas y presiona <b>'Cerrar Sobre'</b>."
-                        : "Toma un sobre del dispensador (<b>Grip</b>), introduce las copias físicas impresas y pulsa <b>'Cerrar Sobre'</b>.";
+                        ? "Toma un sobre del <b>Dispensador</b> (<b>Clic</b>), introduce las copias impresas requeridas y presiona <b>'Cerrar Sobre'</b>.\n\n💡 <i>Sugerencia: Si dispensaste sobres de más, también puedes botarlos al <b>Basurero</b>.</i>"
+                        : "Toma un sobre del dispensador (<b>Grip</b>), introduce las copias físicas impresas y pulsa <b>'Cerrar Sobre'</b>.\n\n💡 <i>Sugerencia: Si dispensaste sobres de más, también puedes botarlos al <b>Basurero</b>.</i>";
                     break;
 
                 case TutorialStep.Step9_DeliverInShippingBox:
