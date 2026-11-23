@@ -478,7 +478,14 @@ public class MenuPausa : MonoBehaviour
         Time.timeScale = 1f;
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
-        SceneManager.LoadScene("MenuInicio");
+        if (Application.CanStreamedLevelBeLoaded("MenuInicio"))
+        {
+            SceneManager.LoadScene("MenuInicio");
+        }
+        else
+        {
+            SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+        }
     }
 
     public void OnHomeClick()
